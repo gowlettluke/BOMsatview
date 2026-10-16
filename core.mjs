@@ -1,7 +1,10 @@
 export const ORIGIN = 'https://d30f2i1nzx9v71.cloudfront.net';
 export const PRODUCTS = {
-  zehr: { id: 'IDE00433', name: 'Infrared + Zehr', short: 'INFRARED + ZEHR' },
-  lightning: { id: 'Lightning', name: 'Lightning + Infrared', short: 'LIGHTNING + INFRARED' },
+  daynight: { id: 'IDE00436', name: 'Day + Night', short: 'Day + Night' },
+  visible: { id: 'IDE00432', name: 'Visible Greyscale', short: 'Visible Greyscale' },
+  infrared: { id: 'IDE00431', name: 'Infrared Greyscale', short: 'Infrared Greyscale', legend: 'ir' },
+  zehr: { id: 'IDE00433', name: 'Infrared + Zehr', short: 'Infrared + Zehr', legend: 'irzehr' },
+  lightning: { id: 'Lightning', name: 'Lightning', short: 'Lightning', legend: 'lir' },
 };
 export const COVERAGE = { west: 85, east: 180, north: 20, south: -55 };
 export const PRESETS = {
@@ -70,16 +73,19 @@ export function tilesForView(view, width, height, overlay = false) {
 export function normalizeSettings(input = {}) {
   const num = (value, fallback, min, max) => Number.isFinite(Number(value)) && value !== null && value !== '' ? clamp(Number(value), min, max) : fallback;
   return {
-    product: Object.hasOwn(PRODUCTS, input.product) ? input.product : 'zehr',
+    product: Object.hasOwn(PRODUCTS, input.product) ? input.product : 'daynight',
     lon: num(input.lon, 145, 85, 180), lat: num(input.lat, -22, -55, 20),
     zoom: num(input.zoom, 3.6, 0, 6),
-    speed: [1, 2, 4, 8].includes(Number(input.speed)) ? Number(input.speed) : 2,
+    speed: [1, 2, 4, 8, 16, 24].includes(Number(input.speed)) ? Number(input.speed) : 4,
     hours: [1, 2, 4].includes(Number(input.hours)) ? Number(input.hours) : 4,
     playing: input.playing !== false && input.playing !== 'false',
     wall: input.wall === true || input.wall === 'true',
     cities: input.cities === true || input.cities === 'true',
-    boundaries: input.boundaries !== false && input.boundaries !== 'false',
-    coast: input.coast !== false && input.coast !== 'false',
+    roads: input.roads === true || input.roads === 'true',
+    legend: input.legend !== false && input.legend !== 'false',
+    coordinates: input.coordinates === true || input.coordinates === 'true',
+    boundaries: input.boundaries === true || input.boundaries === 'true',
+    coast: input.coast === true || input.coast === 'true',
   };
 }
 

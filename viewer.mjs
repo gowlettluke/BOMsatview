@@ -1,4 +1,4 @@
-import { PRODUCTS, PRESETS, project, unproject, timestampMs, selectTimes, tileURL, overlayURL, timelineURL, fitBounds, tilesForView, normalizeSettings, FrameBuffer } from './core.mjs';
+import { PRODUCTS, PRESETS, COVERAGE, project, unproject, timestampMs, selectTimes, tileURL, overlayURL, timelineURL, fitBounds, tilesForView, normalizeSettings, FrameBuffer } from './core.mjs';
 
 const $ = id => document.getElementById(id);
 const STORAGE_KEY = 'bom-satellite-wall-v1';
@@ -11,6 +11,9 @@ const map = $('map'), satellite = $('satellite'), overlayCanvas = $('overlays');
 const buffer = new FrameBuffer();
 const formatTime = new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Brisbane', hour: '2-digit', minute: '2-digit', hour12: false });
 const formatDate = new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Brisbane', weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+const bomDate = new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Brisbane', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+const bomTime = new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Brisbane', hour: '2-digit', minute: '2-digit', hour12: true });
+const all = selector => document.querySelectorAll(selector);
 let width = 1, height = 1, ratio = 1, revision = 0, displayed = null;
 let available = [], ready = [], timelineProduct = null, currentTime = null;
 let lastCheck = null, lastError = '', overlayError = '', warming = false, refreshing = false, refreshAgain = false;
@@ -31,25 +34,24 @@ function toast(message) {
 }
 function syncControls() {
   for (const key of ['product', 'speed', 'hours']) $(key).value = state[key];
-  for (const key of ['boundaries', 'cities', 'coast']) $(key).checked = state[key];
-  $('play').textContent = state.playing ? 'Ⅱ' : '▶';
-  $('play').setAttribute('aria-label', state.playing ? 'Pause animation' : 'Play animation');
-  $('wall').setAttribute('aria-pressed', String(state.wall));
-  document.body.classList.toggle('wall', state.wall);
+  for (const key of ['boundaries', 'cities', 'coast', 'roads', 'coordinates']) $(key).checked = state[key];
+  $('legend-toggle').checked = state.legend;
+  for (const product of Object.keys(PRODUCTS)) $(`product-${product}`).checked = state.product === product;
+  for (const button of all('.animation-play')) {
+    button.querySelector('i').textContent = state.playing ? 'pause' : 'play_arrow';
+    button.setAttribute('aria-label', state.playing ? 'Pause animation' : 'Play animation');
+  }
+  const speedIndex = [1, 2, 4, 8, 16, 24].indexOf(state.speed);
+  for (const button of all('.animation-slower')) button.disabled = speedIndex === 0;
+  for (const button of all('.animation-faster')) button.disabled = speedIndex === 5;
+  $('mousePosition').hidden = !state.coordinates;
 }
-let legendProduct = null;
 function renderLegend(product) {
-  if (legendProduct === product) return;
-  legendProduct = product;
-  const lightning = product === 'lightning';
-  $('lightning-credit').hidden = !lightning;
-  // Colours follow BoM's published Satview legend, including its discontinuities.
-  const ramps = lightning
-    ? ['#fed976,#fed976', '#feb24c,#feb24c', '#fd8d3c,#fd8d3c', '#f03b20,#f03b20', '#bd0026,#bd0026']
-    : ['#000,#000', '#000,#000', '#000,#242424', '#242424,#484848', '#484848,#6d6d6d', '#6d6d6d,#919191', '#919191,#b6b6b6', '#b6b6b6,#dadada', '#dadada,#fff', '#a5f6f6,#7ca4a4', '#7ca4a4,#535353', '#030364,#0303fe', '#036403,#03fe03', '#640303,#fe0303', '#ffff03,#4f4f50', '#fff,#4c4c4c', '#030332,#030332', '#000,#000'];
-  const title = lightning ? 'Lightning frequency / 10 minutes · BoM scale' : 'Infrared brightness temperature · °C';
-  const labels = lightning ? ['Low', 'High'] : ['60', '20', '−20', '−50', '−80', '−110'];
-  $('legend').innerHTML = `<div class="legend-title">${title}</div><div class="legend-ramp">${ramps.map(colors => `<span style="background:linear-gradient(to right,${colors})"></span>`).join('')}</div><div class="legend-labels">${labels.map(t => `<span>${t}</span>`).join('')}</div>`;
+  $('lightning-credit').hidden = product !== 'lightning';
+  const legend = PRODUCTS[product].legend;
+  $('legend').hidden = !state.legend || !legend;
+  for (const row of all('.legend-color-ramp')) row.classList.toggle('hide', row.dataset.legendId !== legend);
+  $('legend-toggle').parentElement.hidden = !legend;
 }
 function status() {
   const latest = available.at(-1);
@@ -68,6 +70,9 @@ function status() {
   $('connection').textContent = lastError || overlayError || (warming ? 'Loading frames in the background…' : `Auto updates on · ${state.playing ? 'Loop playing' : 'Paused'}`);
   $('checked').textContent = lastCheck ? `Feed checked ${formatTime.format(lastCheck)} AEST` : 'Background updates every minute';
   if (displayAge !== null) $('frame-time').title = `Displayed frame is ${displayAge} minutes old. Newest available frame is listed at the upper right.`;
+  const message = lastError || overlayError || (sourceStale ? `Current images are delayed. The newest available image is ${newestAge} minutes old.` : '');
+  $('source-alert').hidden = !message || !displayed;
+  $('source-alert').textContent = message;
 }
 
 function acquireSlot() {
@@ -128,7 +133,7 @@ let overlayRevision = 0;
 async function renderOverlays() {
   const token = ++overlayRevision, vToken = revision;
   const view = { ...state }, w = width, h = height, r = ratio;
-  const layers = [state.coast && 'World', state.boundaries && 'IDZ10030', state.cities && 'IDM00013'].filter(Boolean);
+  const layers = [state.roads && 'IDZ10006', state.boundaries && 'IDZ10030', state.coast && 'World', state.cities && 'IDM00013'].filter(Boolean);
   const surface = makeSurface(), ctx = surface.getContext('2d');
   const tiles = tilesForView(view, w, h, true);
   let failed = 0;
@@ -163,8 +168,11 @@ function showFrame(stamp) {
   displayed = { stamp, product: buffer.product, view: buffer.viewKey };
   currentTime = stamp;
   $('display-product').textContent = PRODUCTS[buffer.product].short;
-  $('frame-time').textContent = `${formatTime.format(timestampMs(stamp))} AEST`;
-  $('frame-date').textContent = `${formatDate.format(timestampMs(stamp))} · UTC+10`;
+  const date = timestampMs(stamp);
+  for (const el of all('.product-date')) el.textContent = bomDate.format(date);
+  for (const el of all('.product-time')) el.textContent = `${bomTime.format(date)} AEST`;
+  for (const el of all('.product-date-short')) el.textContent = formatDate.format(date);
+  for (const el of all('.product-time-short')) el.textContent = `${bomTime.format(date)} AEST`;
   renderLegend(buffer.product);
   $('initial').hidden = true;
   updateSlider();
@@ -266,7 +274,7 @@ function resize() {
   // At most 1600×1000 pixels per surface, 24 surfaces per loop; no unbounded
   // accumulation of old frame canvases during all-day use.
   ratio = Math.min(1, 1600 / width, 1000 / height);
-  if (!hasView && !displayed && !available.length) Object.assign(state, fitBounds(PRESETS.queensland, width, height));
+  if (!hasView && !displayed && !available.length) Object.assign(state, fitBounds(COVERAGE, width, height));
   changeView();
 }
 function setPlaying(playing) { state.playing = playing; syncControls(); persist(); status(); }
@@ -276,7 +284,7 @@ function step(direction) {
   const index = ready.indexOf(currentTime);
   showFrame(ready[(Math.max(0, index) + direction + ready.length) % ready.length]);
 }
-function setWall(wall) { state.wall = wall; syncControls(); persist(); }
+function setWall() { state.wall = false; syncControls(); persist(); }
 function zoom(delta, point = [width / 2, height / 2]) {
   const oldWorld = 512 * 2 ** state.zoom;
   const center = project(state.lon, state.lat, oldWorld);
@@ -288,22 +296,32 @@ function zoom(delta, point = [width / 2, height / 2]) {
   $('region').value = 'custom'; changeView();
 }
 
-$('product').addEventListener('change', () => {
+function changeProduct() {
   state.product = $('product').value; available = []; ready = []; timelineProduct = null;
   lastCheck = null; lastError = ''; metadataController?.abort();
   changeView(); syncControls(); void refreshTimeline(); status();
+}
+$('product').addEventListener('change', changeProduct);
+for (const key of Object.keys(PRODUCTS)) $(`product-${key}`).addEventListener('change', () => {
+  $('product').value = key; changeProduct();
 });
 $('region').addEventListener('change', () => {
   if (PRESETS[$('region').value]) { Object.assign(state, fitBounds(PRESETS[$('region').value], width, height)); changeView(); }
 });
-for (const key of ['boundaries', 'cities', 'coast']) $(key).addEventListener('change', () => {
+for (const key of ['boundaries', 'cities', 'coast', 'roads']) $(key).addEventListener('change', () => {
   state[key] = $(key).checked; persist(); void renderOverlays();
 });
+$('legend-toggle').addEventListener('change', () => { state.legend = $('legend-toggle').checked; persist(); renderLegend(displayed?.product || state.product); });
+$('coordinates').addEventListener('change', () => { state.coordinates = $('coordinates').checked; persist(); syncControls(); });
 $('hours').addEventListener('change', () => { state.hours = Number($('hours').value); persist(); void refreshTimeline(); });
 $('speed').addEventListener('change', () => { state.speed = Number($('speed').value); persist(); });
-$('play').addEventListener('click', () => setPlaying(!state.playing));
-$('previous').addEventListener('click', () => step(-1));
-$('next').addEventListener('click', () => step(1));
+for (const button of all('.animation-play')) button.addEventListener('click', () => setPlaying(!state.playing));
+for (const button of all('.animation-step-backward')) button.addEventListener('click', () => step(-1));
+for (const button of all('.animation-step-forward')) button.addEventListener('click', () => step(1));
+for (const [selector, delta] of [['.animation-slower', -1], ['.animation-faster', 1]]) for (const button of all(selector)) button.addEventListener('click', () => {
+  const speeds = [1, 2, 4, 8, 16, 24];
+  state.speed = speeds[Math.max(0, Math.min(5, speeds.indexOf(state.speed) + delta))]; syncControls(); persist();
+});
 $('latest').addEventListener('click', () => { if (ready.length) { setPlaying(false); showFrame(ready.at(-1)); } });
 $('timeline').addEventListener('input', () => { setPlaying(false); const stamp = ready[Number($('timeline').value)]; if (stamp) showFrame(stamp); });
 $('retry').addEventListener('click', () => { failedFrames.clear(); void refreshTimeline(); });
@@ -322,6 +340,45 @@ $('share').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText(location.href); toast('Display link copied. It includes this view and playback settings.'); }
   catch { toast('Copy the address from your browser. It includes all display settings.'); }
 });
+
+function toggleMenu(menuId, buttonIds, force) {
+  const menu = $(menuId);
+  const open = force ?? menu.hidden;
+  menu.hidden = !open; menu.style.display = open ? 'block' : '';
+  for (const id of buttonIds) $(id).setAttribute('aria-expanded', String(open));
+}
+const layerButtons = ['layers-button', 'layers-button-mobile'];
+$('layers-menu').hidden = true; $('more-menu').hidden = true;
+for (const id of layerButtons) $(id).addEventListener('click', event => {
+  event.stopPropagation(); toggleMenu('layers-menu', layerButtons); toggleMenu('more-menu', ['more'], false);
+});
+$('more').addEventListener('click', event => {
+  event.stopPropagation(); toggleMenu('more-menu', ['more']); toggleMenu('layers-menu', layerButtons, false);
+});
+document.addEventListener('click', event => {
+  if (!event.target.closest('.settings-select')) toggleMenu('layers-menu', layerButtons, false);
+  if (!event.target.closest('#more-select')) toggleMenu('more-menu', ['more'], false);
+});
+let notesText = null;
+$('notes').addEventListener('click', async () => {
+  const modal = $('notes-modal'), body = $('notes-body');
+  modal.style.display = 'block'; modal.classList.toggle('in', true); modal.setAttribute('aria-hidden', 'false');
+  $('close-notes').focus(); body.textContent = 'Loading Satellite Notes…';
+  if (!notesText) {
+    try {
+      const response = await fetch(`${timelineURL('daynight').split('/himawari/')[0]}/himawari/text/IDY28000_TEX.txt`, { cache: 'no-store', signal: AbortSignal.timeout(15000), referrerPolicy: 'no-referrer' });
+      if (!response.ok) throw new Error('Notes unavailable');
+      notesText = await response.text();
+    } catch { body.textContent = 'Satellite Notes text is not available. Please check again later.'; return; }
+  }
+  const text = document.createElement('pre'); text.textContent = notesText;
+  body.replaceChildren(text);
+});
+function closeNotes() {
+  $('notes-modal').style.display = 'none'; $('notes-modal').classList.toggle('in', false); $('notes-modal').setAttribute('aria-hidden', 'true'); $('notes').focus();
+}
+$('close-notes').addEventListener('click', closeNotes);
+$('notes-modal').addEventListener('click', event => { if (event.target === $('notes-modal')) closeNotes(); });
 let drag = null;
 map.addEventListener('pointerdown', event => {
   if (event.button !== 0 || event.target.closest('button, a, input, select')) return;
@@ -329,11 +386,19 @@ map.addEventListener('pointerdown', event => {
   drag = { id: event.pointerId, x: event.clientX, y: event.clientY, center: project(state.lon, state.lat, 512 * 2 ** state.zoom) };
 });
 map.addEventListener('pointermove', event => {
+  if (state.coordinates) {
+    const rect = map.getBoundingClientRect(), world = 512 * 2 ** state.zoom;
+    const [cx, cy] = project(state.lon, state.lat, world);
+    const [lon, lat] = unproject(cx + event.clientX - rect.left - width / 2, cy + event.clientY - rect.top - height / 2, world);
+    $('mousePosition').textContent = `${lon.toFixed(2)}, ${lat.toFixed(2)}`;
+    $('mousePosition').hidden = false;
+  }
   if (!drag || drag.id !== event.pointerId) return;
   const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
   satellite.style.transform = `translate(${dx}px,${dy}px)`;
   overlayCanvas.style.transform = `translate(${dx}px,${dy}px)`;
 });
+map.addEventListener('pointerleave', () => { $('mousePosition').hidden = true; });
 function endDrag(event) {
   if (!drag || drag.id !== event.pointerId) return;
   const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
@@ -355,6 +420,11 @@ map.addEventListener('dblclick', event => {
   const rect = map.getBoundingClientRect(); zoom(0.5, [event.clientX - rect.left, event.clientY - rect.top]);
 });
 document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') {
+    toggleMenu('layers-menu', layerButtons, false); toggleMenu('more-menu', ['more'], false);
+    if ($('notes-modal').style.display === 'block') closeNotes();
+    return;
+  }
   if (event.target.matches('input, select, textarea, button, a')) return;
   if (event.key === ' ') { event.preventDefault(); setPlaying(!state.playing); }
   else if (event.key.toLowerCase() === 'w') setWall(!state.wall);
@@ -382,10 +452,11 @@ window.addEventListener('hashchange', () => {
 let lastAdvance = 0;
 setInterval(() => {
   if (!state.playing || drag || ready.length < 2 || Date.now() - lastAdvance < 1000 / state.speed) return;
-  lastAdvance = Date.now();
+  const elapsed = Date.now() - lastAdvance;
+  lastAdvance = Date.now() - elapsed % (1000 / state.speed);
   const index = ready.indexOf(currentTime);
   showFrame(ready[(index + 1) % ready.length]);
-}, 60);
+}, 16);
 setInterval(() => { void refreshTimeline(); }, 60000);
 setInterval(() => { $('clock').textContent = `${formatTime.format(Date.now())} AEST`; status(); }, 1000);
 syncControls(); resize(); renderLegend(state.product); void refreshTimeline();

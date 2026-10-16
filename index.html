@@ -1,68 +1,259 @@
-<!doctype html>
+<!DOCTYPE html>
+
 <html lang="en-AU">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="color-scheme" content="dark">
-  <meta name="description" content="An automatically updating satellite wall display for BoM Infrared + Zehr and Lightning imagery.">
-  <meta name="referrer" content="no-referrer">
-  <title>Satellite / Wall Display</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%230b151d'/%3E%3Ccircle cx='20' cy='20' r='11' fill='none' stroke='%2368e2bf' stroke-width='3'/%3E%3Cpath d='M8 28L30 10' stroke='%2368e2bf' stroke-width='3'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./style.css">
-</head>
-<body>
-  <header class="topbar chrome">
-    <a class="brand" href="./" aria-label="Satellite wall display home"><span class="brand-mark">◉</span><span>SATELLITE<small>WALL DISPLAY</small></span></a>
-    <div class="selectors">
-      <label>Imagery<select id="product"><option value="zehr">Infrared + Zehr</option><option value="lightning">Lightning + Infrared</option></select></label>
-      <label>View<select id="region"><option value="custom">Custom view</option><option value="queensland">Queensland</option><option value="southeast">South-east Queensland</option><option value="australia">Australia</option></select></label>
-    </div>
-    <div class="top-actions">
-      <button id="share" title="Copy a link with these display settings">Copy link</button>
-      <button id="wall" title="Hide controls for the wall display (W)">Wall mode</button>
-      <button id="fullscreen" title="Enter fullscreen (F)">⛶ <span class="desktop">Fullscreen</span></button>
-    </div>
-  </header>
+<title>Satellite Viewer</title>
+<meta charset="utf-8"/>
+<meta content="IE=edge" http-equiv="X-UA-Compatible"/>
+<meta content="true" name="HandheldFriendly"/>
+<meta content="yes" name="apple-mobile-web-app-capable"/>
+<meta content="black" name="apple-mobile-web-app-status-bar-style"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<meta content="Hi-resolution satellite imagery of Australian weather by Himawari, a geostationary satellite operated by the Japan Meteorological Agency (JMA) and interpreted by the Australian Bureau of Meteorology." name="Description"/>
+<meta content="#333333" name="theme-color"/>
 
-  <main id="map" tabindex="0" aria-label="Satellite map. Drag to pan, scroll or use plus and minus to zoom. Arrow keys move the map.">
-    <canvas id="satellite" aria-label="Animated satellite imagery"></canvas>
-    <canvas id="overlays" aria-hidden="true"></canvas>
-    <div class="map-caption">
-      <div id="display-product" class="eyebrow">INFRARED + ZEHR</div>
-      <div id="frame-time" class="frame-time">Loading imagery…</div>
-      <div id="frame-date" class="muted">Times displayed in AEST · UTC+10</div>
-    </div>
-    <div class="live-panel"><span id="live-status" class="status-dot">CONNECTING</span><time id="clock"></time><small id="freshness">Checking available images</small></div>
-    <div class="map-tools chrome"><button id="zoom-in" aria-label="Zoom in">+</button><button id="zoom-out" aria-label="Zoom out">−</button></div>
-    <div id="initial" role="status"><div class="orbit"></div><h1>Connecting to the satellite feed</h1><p id="initial-message">Loading the latest available image.</p><button id="retry">Try again</button></div>
-    <div class="map-bottom">
-      <div id="legend" aria-label="Image legend"></div>
-      <div class="credits">Imagery: JMA / Bureau of Meteorology<span id="lightning-credit" hidden> · Lightning: Weatherzone</span><br><a href="http://satview.bom.gov.au/about.html" target="_blank" rel="noreferrer">About the source</a> · Independent viewer</div>
-    </div>
-    <div id="toast" role="status" hidden></div>
-    <button id="exit-wall" class="wall-exit">Show controls · W</button>
-  </main>
 
-  <footer class="controls chrome">
-    <div class="playback">
-      <button id="previous" title="Previous frame" aria-label="Previous frame">‹</button>
-      <button id="play" class="play" aria-label="Pause animation" title="Play or pause (Space)">Ⅱ</button>
-      <button id="next" title="Next frame" aria-label="Next frame">›</button>
-      <div class="timeline"><input id="timeline" type="range" min="0" max="0" value="0" aria-label="Image time"><div class="timeline-labels"><span id="range-start">—</span><span id="frame-count">Loading</span><span id="range-end">—</span></div></div>
-      <button id="latest" title="Pause on the newest loaded image">Latest</button>
-    </div>
-    <div class="preferences">
-      <div class="preference-group">
-        <label>Loop<select id="hours"><option value="1">1 hour</option><option value="2">2 hours</option><option value="4">4 hours</option></select></label>
-        <label>Speed<select id="speed"><option value="1">1 fps</option><option value="2">2 fps</option><option value="4">4 fps</option><option value="8">8 fps</option></select></label>
-        <label class="check"><input id="boundaries" type="checkbox"> States</label>
-        <label class="check"><input id="cities" type="checkbox"> Cities</label>
-        <label class="check"><input id="coast" type="checkbox"> Coast</label>
-      </div>
-      <div class="connection"><span id="connection">Starting…</span><span id="checked">Background updates every minute</span></div>
-    </div>
-  </footer>
-  <noscript><div class="noscript">JavaScript is required to animate and update this display.</div></noscript>
-  <script type="module" src="./viewer.mjs"></script>
-</body>
+
+
+
+
+<link href="assets/css/application.min.css" rel="stylesheet"/>
+<link href="./style.css" rel="stylesheet"/><meta content="no-referrer" name="referrer"/></head>
+<body class="noselect">
+<!-- Google Tag Manager -->
+
+
+<!-- End Google Tag Manager -->
+<div class="row hw-panel-info navbar-fixed-top">
+<div class="container-fluid">
+<div class="row">
+<div class="col-sm-2 hidden-xs">
+<div class="hw-logo hidden-xs">
+<a href="http://www.bom.gov.au">
+<img alt="Bureau of Meteorology" src="assets/images/logo-inline.svg"/>
+</a>
+</div>
+</div>
+<div class="col-xs-8 col-sm-8 hw-product-heading">
+<div class="hw-logo">
+<h1 class="product-name hw-semibold hw-white hw-top-heading" id="display-product" title="Product Type">Day + Night</h1>
+</div>
+</div>
+<div class="col-xs-4 col-sm-2 text-right" id="more-select">
+<button aria-label="Go Fullscreen" class="material-icons hw-btn-more dropdown-toggle hw-mat-icon-big map-fullscreen-btn" id="fullscreen" title="Go Fullscreen">fullscreen</button>
+<button aria-expanded="false" aria-haspopup="true" aria-label="More information" class="material-icons hw-btn-more dropdown-toggle hw-mat-icon-big" data-toggle="dropdown" id="more" title="More information">more_horiz</button>
+<ul class="list-group dropdown-menu scrollable-menu dropdown-menu-right hw-panel-more hw-enable-scroll" id="more-menu">
+<li class="btn hw-panel-layers-btn" role="presentation">
+<a href="http://satview.bom.gov.au/about.html" rel="noreferrer" target="_blank"><i class="material-icons hw-more-menu-size">info_outline</i>About</a>
+</li>
+<li class="btn hw-panel-layers-btn" role="presentation">
+<a href="http://satview.bom.gov.au/help.html" rel="noreferrer" target="_blank"><i class="material-icons hw-more-menu-size">help_outline</i>Help</a>
+</li>
+<li class="btn hw-panel-layers-btn" role="presentation">
+<a href="http://www.bom.gov.au/other/feedback/?ref=ftr" target="_blank"><i class="material-icons hw-more-menu-size">chat_bubble_outline</i>Feedback</a>
+</li>
+<li class="btn hw-panel-layers-btn" role="presentation">
+<a href="http://www.bom.gov.au/australia/satellite/"><i class="material-icons hw-more-menu-size">web</i>Standard Viewer</a>
+</li>
+<li class="divider"></li>
+<li>
+<ul>
+<li class="btn hw-panel-social-btn" role="presentation">
+<a href="https://twitter.com/intent/tweet?text=See%20high-definition%20images%20from%20%23Himawari8%20on%20%40BOM_Au%27s%20new%20satellite%20viewer%3A%20http%3A%2F%2Fsatview.bom.gov.au%2F%20%23BOMsat" target="_blank">
+<img alt="Twitter" src="assets/images/twitter-logo.png"/>
+</a>
+</li>
+<li class="btn hw-panel-social-btn" role="presentation">
+<a href="https://www.facebook.com/sharer/sharer.php?u=http://satview.bom.gov.au/index.html" target="_blank">
+<img alt="Facebook" src="assets/images/facebook-logo.png"/>
+</a>
+</li>
+</ul>
+</li>
+<li class="divider visible-xs"></li>
+<li class="btn hw-panel-layers-btn hw-logo-menu visible-xs" role="presentation">
+<a href="http://www.bom.gov.au">
+<img alt="Bureau of Meteorology" src="assets/images/logo-stacked.svg"/>
+</a>
+</li>
+<li class="divider"></li><li class="viewer-details"><div>Independent auto-updating viewer</div><div id="connection">Connecting…</div><div id="checked"></div><div id="frame-count"></div><button class="hw-btn-av" id="share">Copy display link</button></li></ul>
+</div>
+</div>
+</div>
+</div>
+<div aria-label="Satellite map. Drag to pan, scroll to zoom, or use arrow keys." class="map" id="map" tabindex="0"><canvas aria-label="Animated satellite imagery" id="satellite"></canvas><canvas aria-hidden="true" id="overlays"></canvas><div class="ol-zoom ol-unselectable ol-control"><button aria-label="Zoom in" class="ol-zoom-in" id="zoom-in">+</button><button aria-label="Zoom out" class="ol-zoom-out" id="zoom-out">−</button></div><div id="initial" role="status"><div class="spinner"><div class="bounce1"></div><div class="bounce2"></div><div class="bounce3"></div></div><p id="initial-message">Loading satellite imagery…</p><button class="btn btn-primary" id="retry">Try again</button></div><div class="alert product-pulse alert-warning" hidden="" id="source-alert" role="status"></div><span class="label label-primary product-attribution" hidden="" id="lightning-credit">Lightning data supplied by the Weatherzone Total Lightning Network</span><div hidden="" id="toast" role="status"></div></div>
+<div class="preloader" id="preloader"></div>
+<nav class="navbar navbar-default navbar-fixed-bottom hw-panel-navbar" id="navigation">
+<div aria-label="Image legend" class="legend" id="legend">
+<div class="legend-color-ramp legend-ir hide" data-legend-id="ir">
+<div class="ir-60">60°C</div>
+<div class="ir-50 hidden-xs">50</div>
+<div class="ir-40">40</div>
+<div class="ir-30 hidden-xs">30</div>
+<div class="ir-20">20</div>
+<div class="ir-10 hidden-xs">10</div>
+<div class="ir-0">0</div>
+<div class="ir-m10 hidden-xs">-10</div>
+<div class="ir-m20">-20</div>
+<div class="ir-m30 hidden-xs">-30</div>
+<div class="ir-m40">-40</div>
+<div class="ir-m50 hidden-xs">-50</div>
+<div class="ir-m60">-60</div>
+<div class="ir-m70 hidden-xs">-70</div>
+<div class="ir-m80">-80</div>
+<div class="ir-m90 hidden-xs">-90</div>
+<div class="ir-m100">-100</div>
+<div class="ir-m110">-110</div>
+</div>
+<div class="legend-color-ramp legend-lir hide" data-legend-id="lir">
+<div class="lir-m2">Low Frequency</div>
+<div class="lir-m3 hidden-xs"></div>
+<div class="lir-m5"></div>
+<div class="lir-m10 hidden-xs"></div>
+<div class="lir-m20">High Frequency</div>
+</div>
+<div class="legend-color-ramp legend-irzehr hide" data-legend-id="irzehr">
+<div class="ir-zehr60m20 visible-xs">60°C</div>
+<div class="ir-zehr60 hidden-xs">
+<span class="hidden-xs">60°C</span>
+<span class="visible-xs">60</span>
+</div>
+<div class="ir-zehr50 hidden-xs">50</div>
+<div class="ir-zehr40 hidden-xs">40</div>
+<div class="ir-zehr30 hidden-xs">30</div>
+<div class="ir-zehr20 hidden-xs">20</div>
+<div class="ir-zehr10 hidden-xs">10</div>
+<div class="ir-zehr0 hidden-xs">0</div>
+<div class="ir-zehrm10 hidden-xs">-10</div>
+<div class="ir-zehrm20 hidden-xs">-20</div>
+<div class="ir-zehrm30">-30</div>
+<div class="ir-zehrm40">-40</div>
+<div class="ir-zehrm50">-50</div>
+<div class="ir-zehrm60">-60</div>
+<div class="ir-zehrm70">-70</div>
+<div class="ir-zehrm80">-80</div>
+<div class="ir-zehrm90">-90</div>
+<div class="ir-zehrm100">-100</div>
+<div class="ir-zehrm110">-110</div>
+</div>
+</div>
+<div class="hw-time-label visible-xs-block">
+<span class="product-date-short hw-semibold hw-white"></span> <span class="product-time-short hw-semibold hw-white"></span>
+</div>
+<div class="hidden">
+<span class="product-date-short hw-semibold hw-white"></span> 
+                <span class="product-time-short hw-semibold hw-white"></span>
+</div>
+<div class="hidden-xs hw-mouse-position" hidden="True" id="mousePosition"></div>
+<div class="preloader-status hidden" id="preloaderStatus">Loading...</div>
+<div class="container-fluid hw-navbar-animation">
+<div class="row">
+<div class="col-xs-2 col-md-2">
+<div class="dropup navbar-left settings-select">
+<button aria-controls="layers-menu" aria-expanded="false" aria-label="Layers" class="btn btn-default dropdown-toggle hw-btn-layers hw-semibold hidden-xs" data-toggle="dropdown" id="layers-button">
+<i aria-hidden="true" class="material-icons hw-panel-layers-icon">layers</i>Layers +
+                            </button>
+<button aria-controls="layers-menu" aria-expanded="false" aria-label="Layers" class="btn btn-default hw-btn-av dropdown-toggle hw-btn-layers hw-mat-icon hw-semibold visible-xs" data-toggle="dropdown" id="layers-button-mobile">
+<i class="material-icons hw-mat-size">layers</i>
+</button>
+<ul aria-labelledby="settingsSelect" class="dropdown-menu scrollable-menu drop-up hw-panel-layers" id="layers-menu" role="menu"><li class="btn hw-panel-layers-btn" role="presentation"><input class="hw-checkbound product-radio" id="product-daynight" name="products[]" type="radio" value="daynight"/><label class="hw-checkbound" for="product-daynight"><span></span>Day + Night</label></li><li class="btn hw-panel-layers-btn" role="presentation"><input class="hw-checkbound product-radio" id="product-visible" name="products[]" type="radio" value="visible"/><label class="hw-checkbound" for="product-visible"><span></span>Visible Greyscale</label></li><li class="btn hw-panel-layers-btn" role="presentation"><input class="hw-checkbound product-radio" id="product-infrared" name="products[]" type="radio" value="infrared"/><label class="hw-checkbound" for="product-infrared"><span></span>Infrared Greyscale</label></li><li class="btn hw-panel-layers-btn" role="presentation"><input class="hw-checkbound product-radio" id="product-zehr" name="products[]" type="radio" value="zehr"/><label class="hw-checkbound" for="product-zehr"><span></span>Infrared + Zehr</label></li><li class="btn hw-panel-layers-btn" role="presentation"><input class="hw-checkbound product-radio" id="product-lightning" name="products[]" type="radio" value="lightning"/><label class="hw-checkbound" for="product-lightning"><span></span>Lightning</label></li>
+<li class="divider"></li>
+<li class="btn hw-panel-layers-btn" role="presentation">
+<input class="settings-checkbox" id="cities" type="checkbox" value="setting-cities"/>
+<label for="cities"><span></span>Cities</label>
+</li>
+<li class="btn hw-panel-layers-btn" role="presentation">
+<input class="settings-checkbox" id="roads" type="checkbox" value="setting-roads"/>
+<label for="roads"><span></span>Roads</label>
+</li>
+<li class="btn hw-panel-layers-btn" role="presentation">
+<input class="settings-checkbox" id="boundaries" type="checkbox" value="setting-boundaries"/>
+<label for="boundaries"><span></span>Boundaries</label>
+</li>
+<li class="btn hw-panel-layers-btn" role="presentation">
+<input class="settings-checkbox" id="coast" type="checkbox" value="setting-coastal"/>
+<label for="coast"><span></span>Coastal</label>
+</li>
+<li class="divider"></li>
+<li class="btn hw-panel-layers-btn" role="presentation">
+<input checked="" id="legend-toggle" type="checkbox" value="setting-legend"/>
+<label for="legend-toggle"><span></span>Show Legend</label>
+</li>
+<li class="btn hw-panel-layers-btn hidden-xs" role="presentation">
+<input id="coordinates" type="checkbox" value="setting-coords"/>
+<label for="coordinates"><span></span>Show Coordinates</label>
+</li>
+</ul>
+</div>
+</div>
+<div class="col-xs-6 col-md-8 animation-btns hidden-xs">
+<div class="row no-gutter">
+<div class="col-xs-6 col-md-5">
+<div class="visible-lg">
+<label for="timeline">
+<span class="hw-timestep-label">
+<span class="product-date hw-semibold hw-white" id="frame-date"></span>
+<span class="product-time hw-semibold hw-white" id="frame-time"></span>
+</span>
+</label>
+</div>
+<div class="hidden-lg">
+<label for="timeline">
+<span class="hw-timestep-label">
+<span class="product-date-short hw-semibold hw-white"></span>
+<span class="product-time-short hw-semibold hw-white"></span>
+</span>
+</label>
+</div>
+<input aria-label="Image time" class="timestep" id="timeline" max="0" min="0" step="1" title="" type="range" value="0"/>
+<input aria-hidden="true" id="timestepPrev" type="hidden" value="0"/>
+</div>
+<div class="col-xs-6 col-md-7 text-center">
+<div class="visible-md visible-lg">
+<button aria-label="Slow" class="hw-btn-av animation-slower" id="slower" title="Slow"><span class="hw-tiny-button">Slower</span><i class="material-icons hw-mat-size">remove</i></button>
+<button aria-label="Skip Back" class="hw-btn-av animation-step-backward" id="previous" title="Skip Back"><i class="material-icons hw-mat-size">skip_previous</i></button>
+<button aria-label="Pause animation" class="hw-btn-av animation-play" id="play" title="Play"><i class="material-icons hw-play-size">play_arrow</i></button>
+<button aria-label="Skip Forward" class="hw-btn-av animation-step-forward" id="next" title="Skip Forward"><i class="material-icons hw-mat-size">skip_next</i></button>
+<button aria-label="Fast" class="hw-btn-av animation-faster" id="faster" title="Fast"><i class="material-icons hw-mat-size">add</i><span class="hw-tiny-button">Faster</span></button>
+</div>
+<div class="visible-xs visible-sm">
+<button aria-label="Skip Back" class="hw-btn-av animation-step-backward" id="previous-1" title="Skip Back"><i class="material-icons hw-mat-size">skip_previous</i></button>
+<button aria-label="Pause animation" class="hw-btn-av animation-play" id="play-1" title="Play"><i class="material-icons hw-play-size">play_arrow</i></button>
+<button aria-label="Skip Forward" class="hw-btn-av animation-step-forward" id="next-1" title="Skip Forward"><i class="material-icons hw-mat-size">skip_next</i></button>
+</div>
+</div>
+</div>
+</div>
+<div class="col-xs-6 col-md-8 animation-btns visible-xs">
+<div class="row">
+<div class="col-xs-12 col-sm-12 text-center">
+<button aria-label="Skip Back" class="hw-btn-av animation-step-backward" id="previous-2" title="Skip Back"><i class="material-icons hw-mat-size">skip_previous</i></button>
+<button aria-label="Pause animation" class="hw-btn-av animation-play" id="play-2" title="Play"><i class="material-icons hw-play-size">play_arrow</i></button>
+<button aria-label="Skip Forward" class="hw-btn-av animation-step-forward" id="next-2" title="Skip Forward"><i class="material-icons hw-mat-size">skip_next</i></button>
+</div>
+</div>
+</div>
+<div class="col-xs-4 col-md-2 about-btns">
+<div class="pull-right">
+<button class="btn hw-btn-av hw-mat-icon" data-target=".bs-notes-modal-lg" data-toggle="modal" id="notes" title="Satellite Notes"><i aria-hidden="true" class="material-icons hw-mat-size">description</i><span class="hw-screen-reader-text">Show Satellite Notes</span></button>
+<a href="http://www.bom.gov.au/australia/warnings/index.shtml" target="_blank"><button class="btn hw-btn-av hw-mat-icon"><i aria-hidden="true" class="material-icons hw-mat-size" title="Go to Warnings">warning</i><span class="hw-screen-reader-text">Go to Warnings Page</span></button></a>
+</div>
+</div>
+</div>
+</div>
+</nav>
+<div aria-hidden="true" aria-label="Satellite Notes" aria-labelledby="notesLabel" class="modal fade bs-notes-modal-lg" data-backdrop="static" id="notes-modal" role="dialog" tabindex="-1">
+<div class="modal-dialog modal-lg">
+<div class="modal-content">
+<div class="modal-body" id="notes-body">...</div>
+<div class="modal-footer">
+<button class="btn btn-lg btn-notes" data-dismiss="modal" id="close-notes" type="button">Close Notes</button>
+</div>
+</div>
+</div>
+</div>
+
+<!--Social Media Javascript Links -->
+
+<div hidden="" id="compatibility-controls"><select id="product"><option value="daynight">Day + Night</option><option value="visible">Visible Greyscale</option><option value="infrared">Infrared Greyscale</option><option value="zehr">Infrared + Zehr</option><option value="lightning">Lightning</option></select><select id="region"><option value="custom">Custom</option><option value="queensland">Queensland</option><option value="southeast">South-east Queensland</option><option value="australia">Australia</option></select><select id="speed"><option>1</option><option>2</option><option>4</option><option>8</option><option>16</option><option>24</option></select><select id="hours"><option>1</option><option>2</option><option>4</option></select><span id="live-status"></span><span id="freshness"></span><span id="clock"></span><span id="range-start"></span><span id="range-end"></span><button id="latest">Latest</button><button id="wall">Wall</button><button id="exit-wall">Controls</button></div><script src="./viewer.mjs" type="module"></script></body>
 </html>

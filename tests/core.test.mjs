@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { project, unproject, timestampMs, selectTimes, tileURL, timelineURL, tilesForView, fitBounds, PRESETS, normalizeSettings, FrameBuffer } from '../core.mjs';
+import { PRODUCTS, project, unproject, timestampMs, selectTimes, tileURL, timelineURL, tilesForView, fitBounds, PRESETS, normalizeSettings, FrameBuffer } from '../core.mjs';
 
 test('BoM tiles use TMS Y coordinates; timeline and image products match', () => {
   assert.match(tileURL('zehr', '202610162200', 4, 14, 9), /IDE00433\/Himawari\/202610162200\/4\/14\/6.jpg$/);
@@ -64,7 +64,17 @@ test('Region fits and tile requests remain inside valid world coordinates', () =
 });
 test('Saved settings and URL input are validated, including explicit false values', () => {
   const s = normalizeSettings({ product: '__proto__', lat: 'NaN', lon: 999, zoom: -20, hours: 100, playing: 'false', wall: 'true', cities: 'false', speed: 200 });
-  assert.equal(s.product, 'zehr'); assert.equal(s.lat, -22); assert.equal(s.lon, 180);
+  assert.equal(s.product, 'daynight'); assert.equal(s.lat, -22); assert.equal(s.lon, 180);
   assert.equal(s.zoom, 0); assert.equal(s.hours, 4); assert.equal(s.playing, false);
-  assert.equal(s.wall, true); assert.equal(s.cities, false); assert.equal(s.speed, 2);
+  assert.equal(s.wall, true); assert.equal(s.cities, false); assert.equal(s.speed, 4);
+});
+test('Every BoM imagery product has its original product ID and selectable settings', () => {
+  assert.deepEqual(Object.values(PRODUCTS).map(p => p.id), ['IDE00436', 'IDE00432', 'IDE00431', 'IDE00433', 'Lightning']);
+  for (const product of Object.keys(PRODUCTS)) {
+    assert.equal(normalizeSettings({ product }).product, product);
+    assert.match(timelineURL(product), new RegExp(PRODUCTS[product].id));
+  }
+  const settings = normalizeSettings({ roads: 'true', coordinates: 'true', legend: 'false', speed: 24 });
+  assert.equal(settings.roads, true); assert.equal(settings.coordinates, true);
+  assert.equal(settings.legend, false); assert.equal(settings.speed, 24);
 });

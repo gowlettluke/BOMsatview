@@ -1,52 +1,50 @@
-# Satellite wall display
-
-A browser-only wall display for the Bureau of Meteorology's **Infrared + Zehr** and **Lightning + Infrared** products. Open a webpage on the display computer; no browser extensions, installations, account or API key are needed.
+# Auto-updating BoM satellite viewer
 
 **Live viewer:** https://giswatidid.github.io/BOMsatview/
 
-## Publish on GitHub Pages
+A wall-display version of the BoM satellite viewer with its original layout, blue animation bar, Layers menu, fonts, icons and legends. Its imagery updates in the background without reloading the page, resetting the selected product or requiring Play to be pressed again. This is an independent hosted viewer, not an official BoM service.
 
-1. Open [this repository's Pages settings](https://github.com/giswatidid/BOMsatview/settings/pages).
-2. Under **Build and deployment → Source**, select **GitHub Actions**.
-3. Open [Actions](https://github.com/giswatidid/BOMsatview/actions), select **Test and deploy wall display**, and use **Run workflow** if an earlier run failed because Pages was not enabled.
-4. The successful deployment's **github-pages** environment provides the live URL. The expected project URL is `https://giswatidid.github.io/BOMsatview/`.
+## Options
 
-The workflow validates JavaScript, runs regression tests, packages only the public application files, and deploys the static site. Subsequent pushes to `main` publish automatically. Pull requests run checks without deploying.
+All five BoM imagery products are available under **Layers +**:
 
-## Use on the wall
+- Day + Night (`IDE00436`)
+- Visible Greyscale (`IDE00432`)
+- Infrared Greyscale (`IDE00431`)
+- Infrared + Zehr (`IDE00433`)
+- Lightning (`Lightning`, which includes BoM's infrared background)
 
-- Choose **Infrared + Zehr** or **Lightning + Infrared**. These are separate products; the lightning product already includes BoM's infrared background.
-- Choose Queensland, South-east Queensland or Australia, or drag/zoom to a custom view.
-- Select the last 1, 2 or 4 hours, playback speed, and coast/state/city overlays.
-- Use **Wall mode** to hide the control bars. Press **W** or hover near the bottom right for **Show controls**. **Escape** also exits wall mode when the map has keyboard focus.
-- Use **Fullscreen**, or the browser's **F11** key. Browser fullscreen normally needs a user gesture; the page does not promise unattended fullscreen entry after a computer restart.
-- **Copy link** includes the layer, geographic view, loop, playback, overlays and wall mode. Bookmark that link on the display computer. Settings are also stored in that browser when local storage is permitted.
-- Playback starts automatically on a new display. Space toggles play/pause; plus/minus zoom; arrow keys pan when the map has focus. Scrubbing, stepping or **Latest** intentionally pauses. Background image checks continue while paused.
+The same menu provides **Cities**, **Roads**, **Boundaries**, **Coastal**, **Show Legend** and **Show Coordinates**. As on BoM, the legend option appears for products that have a legend. Coordinates follow the mouse position and display longitude, latitude to two decimal places.
 
-All visible times are **AEST (UTC+10 / Brisbane)**, including when the computer uses another timezone.
+The original animation controls provide slower/faster playback, previous/next frame, play/pause and a timeline slider. Supported speeds match BoM: 1, 2, 4, 8, 16 and 24 frames per second. The header has fullscreen and More; the bottom right has Satellite Notes and the link to BoM warnings. About, Help, Feedback and Standard Viewer link to the corresponding original BoM resources. Satellite Notes are fetched from the same BoM delivery service.
 
-## What updates, and how
+## Use
 
-The page never refreshes itself. It polls the selected product's small `timesteps.json` file every 60 seconds, and again on network recovery or returning to a tab after more than a minute. It uses only published timestamps, so missing source frames are not fabricated.
+Open the live URL on the wall-display computer, select the product and overlays, and drag/scroll to position the map. Press the fullscreen icon or F11. The layout fills the window as the original BoM viewer does; the previous custom dashboard/wall-mode interface has been replaced.
 
-Completed frames for the current map view remain in a rolling memory buffer. New frames are downloaded and decoded off screen, then enter playback only when every required imagery tile succeeds. A synchronous canvas draw replaces the displayed frame without an intermediate blank canvas. The existing loop continues while new frames load. Unchanged frames are reused; old frames are removed. Pausing, refreshing the timeline or temporarily losing the feed does not reset the selected layer or map view.
+Settings and playback state are saved locally when browser storage is permitted. The address also includes settings, so it can be bookmarked. **More → Copy display link** copies that address. Existing links from the first version remain supported. Times use **AEST (UTC+10 / Brisbane)**.
 
-Changing product or map view keeps the previous picture on screen until a replacement is ready. The title/time continue to describe that actual picture. Map overlays load separately, so toggling cities or boundaries does not rebuild the satellite animation.
+New displays start with Day + Night, a full satellite-coverage view and playback enabled. Prior saved choices are retained. Stepping or scrubbing intentionally pauses playback; background checks continue. Space toggles playback, plus/minus zoom and arrow keys pan when the map has focus.
 
-The upper-right panel shows the **newest available source image**, separately from the historical frame currently playing at upper left. BoM's lightning product can arrive later than satellite-only imagery. Source-delay thresholds are 45 minutes for Zehr and 60 minutes for lightning; these are this viewer's display thresholds, not BoM service guarantees. Feed or tile errors are shown and retried automatically. A successful metadata check alone does not mean the latest image has finished loading.
+## Background updates
 
-## Network requirements
+The page polls the selected product's small `timesteps.json` file every minute. It uses published timestamps and keeps a rolling four-hour animation of up to 24 frames. Unchanged rendered frames are reused. New frames are downloaded and decoded off screen and enter playback only once every required satellite tile has loaded. A synchronous canvas draw replaces the image without an intermediate blank canvas.
 
-The work browser must be able to access both:
+If downloads fail, the current picture/loaded loop stays visible and failed images are retried. Layer, zoom, map centre, playback speed and overlays survive feed checks. Changing product or view keeps the previous picture until a replacement is ready. Map overlays load separately. Update/loading information is available inside **More**; a source or connection problem produces a BoM-style alert rather than silently displaying stale imagery. Satellite-only data is flagged after 45 minutes; lightning after 60 minutes to allow for its additional source latency. These are this viewer's thresholds, not BoM service guarantees.
 
-- The GitHub Pages hosting domain, normally `giswatidid.github.io`.
-- `https://d30f2i1nzx9v71.cloudfront.net`, the existing image delivery host used by Satview.
+The renderer bounds memory to 24 frame surfaces, each at most 1600×1000 pixels, plus a 48-entry tile cache and visible/overlay canvases. Tile downloads are limited to six concurrent requests. Keep the display computer awake and the tab visible.
 
-No third-party JavaScript, fonts, maps, analytics, backend, proxy or scheduled GitHub image scraping is used. Metadata permits cross-origin requests. Tiles are displayed using ordinary images and a 2D canvas; they do not consistently have CORS headers, so this viewer does **not** attempt pixel reads, image exports or WebGL texture uploads. Images are loaded directly from the existing public service rather than copied into this repository.
+## Work-network access
 
-## Development and checks
+The browser needs access to `giswatidid.github.io` and `https://d30f2i1nzx9v71.cloudfront.net`, Satview's existing image delivery host. No extensions, installation, account, API key, proxy or backend is needed. Styles, fonts and icons are hosted with this repository; there are no external script, font or analytics dependencies.
 
-Node 20+ is needed only for development/CI, not on the display computer. No package installation is required.
+Metadata permits cross-origin access. Image tiles do not consistently provide CORS headers; ordinary images may be drawn to the 2D canvas, but this viewer does not read/export its pixels or use WebGL. Imagery is loaded directly from BoM's delivery service and is not copied into the repository.
+
+## Publish and develop
+
+Pages is configured to use **GitHub Actions**. Pushes to `main` run JavaScript checks, regression tests and the static build before publishing; pull requests only run checks. To enable a fresh copy, choose **Settings → Pages → Source → GitHub Actions**.
+
+Node 20+ is needed only for development/CI. No package installation is required:
 
 ```sh
 npm run check
@@ -54,32 +52,18 @@ npm test
 npm run build
 ```
 
-Serve `dist/` with any static HTTP server when doing local browser testing. Module scripts should be served over HTTP(S), rather than opened with `file://`.
+Serve `dist/` with a static HTTP server for local development; module scripts need HTTP(S), not `file://`.
 
-- `core.mjs`: projection, TMS tile URLs, input validation, timelines and ready-frame buffer.
-- `viewer.mjs`: canvas display, bounded request concurrency/cache, background updates, controls and persistence.
-- `tests/core.test.mjs`: geographic/timestamp correctness, frame readiness/reuse and invalid settings.
-- `tests/viewer.test.mjs`: real viewer orchestration with simulated image/network events, including source refresh, failed metadata/tiles, recovery, product changes and paused playback. This is not a substitute for live browser/network testing.
-- `.github/workflows/pages.yml`: test, package and deploy.
+- `core.mjs`: products, projection, TMS URLs, settings validation and ready-frame buffer.
+- `viewer.mjs`: rendering, background updates, original BoM controls, notes and saved settings.
+- `assets/`: original BoM presentation assets (see `NOTICE.md`).
+- `tests/`: projection/timestamp/buffer correctness plus async viewer tests for refresh, failed feeds/tiles, recovery, pausing, all five products, Roads, coordinates, legend toggling, speed controls and notes.
+- `.github/workflows/pages.yml`: checks, packaging and GitHub Pages deployment.
 
-Memory is bounded to 24 composed frame surfaces, each capped at 1600×1000 pixels, plus a 48-entry tile cache and the visible/overlay canvases. Only six tile requests run concurrently. Closing the page clears the frame buffer; reopening loads current imagery. The browser/OS should be configured to keep the wall-display tab visible and prevent the computer sleeping.
+The tests use simulated network/image events and do not replace checks on the actual work computer. Live HTTPS feeds and image tiles are verified separately. This uses Satview's existing public delivery endpoints rather than a documented versioned API, so future source changes may require maintenance.
 
-## Source and attribution
+## Attribution
 
-Independent viewer; not an official BoM product. Satellite imagery: Japan Meteorological Agency, via the Bureau of Meteorology. Lightning data: Weatherzone Total Lightning Network, as attributed by Satview. Source imagery and overlays retain their respective owners' rights; no claim of ownership is made over them.
+Imagery: Japan Meteorological Agency via Bureau of Meteorology. Lightning: Weatherzone Total Lightning Network. Presentation assets are from BoM's publicly served satellite viewer, retained to match its interface as requested. Their respective owners retain all rights. See `NOTICE.md` for source and third-party notices.
 
-- [BoM satellite viewer](http://satview.bom.gov.au/)
-- [Product explanations and timestamps](http://satview.bom.gov.au/about.html)
-- [Viewer help](http://satview.bom.gov.au/help.html)
-- [BoM copyright](http://www.bom.gov.au/other/copyright.shtml)
-
-The public endpoints and legend were verified against Satview's shipped application on 17 October 2026 (Brisbane time). These are the existing viewer's delivery endpoints, rather than a documented versioned API, so future BoM changes may require maintenance.
-
-## Verification — 17 October 2026 (AEST)
-
-- HTTPS timeline retrieval succeeded for both products, with cross-origin metadata access enabled.
-- HTTPS satellite tiles at zooms 4, 5 and 6 and static coast/state tiles were retrieved successfully.
-- JavaScript checks, the regression suite and the static package build passed locally.
-- GitHub Actions independently passed the JavaScript checks, all nine tests, build and Pages deployment. The published site returns HTTP 200.
-- The live browser loaded and played a complete 24-frame loop for both Infrared + Zehr and Lightning + Infrared. Switching product retained map centre, zoom, playback and overlay selections. Wall mode and the return to controls worked, with aligned coast/state overlays.
-- Verification used a cloud browser, not the user's work network. Access from that network still needs to be checked on the display computer.
+[Original viewer](http://satview.bom.gov.au/) · [Product information](http://satview.bom.gov.au/about.html) · [Help](http://satview.bom.gov.au/help.html) · [BoM copyright](http://www.bom.gov.au/other/copyright.shtml)

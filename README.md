@@ -2,6 +2,8 @@
 
 A browser-only wall display for the Bureau of Meteorology's **Infrared + Zehr** and **Lightning + Infrared** products. Open a webpage on the display computer; no browser extensions, installations, account or API key are needed.
 
+**Live viewer:** https://giswatidid.github.io/BOMsatview/
+
 ## Publish on GitHub Pages
 
 1. Open [this repository's Pages settings](https://github.com/giswatidid/BOMsatview/settings/pages).
@@ -73,9 +75,11 @@ Independent viewer; not an official BoM product. Satellite imagery: Japan Meteor
 
 The public endpoints and legend were verified against Satview's shipped application on 17 October 2026 (Brisbane time). These are the existing viewer's delivery endpoints, rather than a documented versioned API, so future BoM changes may require maintenance.
 
-## Initial verification
+## Verification — 17 October 2026 (AEST)
 
 - HTTPS timeline retrieval succeeded for both products, with cross-origin metadata access enabled.
 - HTTPS satellite tiles at zooms 4, 5 and 6 and static coast/state tiles were retrieved successfully.
 - JavaScript checks, the regression suite and the static package build passed locally.
-- Live browser testing and GitHub Pages deployment must be verified after Pages is enabled. No claim of a completed work-network test is made by these local checks.
+- GitHub Actions independently passed the JavaScript checks, all nine tests, build and Pages deployment. The published site returns HTTP 200.
+- The live browser loaded and played a complete 24-frame loop for both Infrared + Zehr and Lightning + Infrared. Switching product retained map centre, zoom, playback and overlay selections. Wall mode and the return to controls worked, with aligned coast/state overlays.
+- Verification used a cloud browser, not the user's work network. Access from that network still needs to be checked on the display computer.

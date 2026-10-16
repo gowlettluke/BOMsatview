@@ -17,6 +17,8 @@ test('Running viewer keeps playing through new frames, failures, and layer chang
     querySelector() { return this.icon ||= new Element(); }
     closest() { return null; }
     replaceChildren(...children) { this.children = children; }
+    append(...children) { (this.children ||= []).push(...children); }
+    setPointerCapture() {}
     getBoundingClientRect() { return { ...viewport, left: 0, top: 0 }; }
     getContext() { return { fillRect() {}, drawImage: (...args) => { if (this.id === 'satellite') canvasWrites.push(args[0]); } }; }
     matches() { return false; }
@@ -29,13 +31,15 @@ test('Running viewer keeps playing through new frames, failures, and layer chang
   const realDateNow = Date.now;
   let now = Date.UTC(2026, 9, 16, 22, 20), metadataFails = false, imageFails = false, pageReloads = 0;
   let times = ['202610162140', '202610162150', '202610162200'];
+  let notes = 'IDY28000\r\nAustralian Government Bureau of Meteorology\r\nBureau National Operations Centre\r\n\r\nSatellite Notes for 1800UTC Chart\r\nIssued at 6:07 am EDT Saturday on 17 October 2026\r\n\r\nFirst wrapped\r\nparagraph.\r\n\r\nFinal paragraph without a newline.';
+  let notesFail = false;
   const originalGlobals = new Map();
   const install = (key, value) => { originalGlobals.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { value, configurable: true, writable: true }); };
   const fetchCalls = [];
   const selectorMap = { '.animation-play': ['play', 'play-1', 'play-2'], '.animation-step-backward': ['previous', 'previous-1', 'previous-2'], '.animation-step-forward': ['next', 'next-1', 'next-2'], '.animation-slower': ['slower'], '.animation-faster': ['faster'], '.product-date': ['frame-date'], '.product-time': ['frame-time'] };
   const legendRows = ['ir', 'irzehr', 'lir'].map(id => { const el = new Element(); el.dataset.legendId = id; return el; });
   install('document', {
-    getElementById: id => elements.get(id), createElement: () => new Element(),
+    getElementById: id => elements.get(id), createElement: () => new Element(), createTextNode: text => ({ textContent: text }),
     body: new Element(), documentElement: new Element(), hidden: false,
     querySelectorAll: selector => selector === '.legend-color-ramp' ? legendRows : (selectorMap[selector] || []).map(id => elements.get(id)),
     addEventListener: (type, fn) => listeners.set(type, fn),
@@ -56,12 +60,17 @@ test('Running viewer keeps playing through new frames, failures, and layer chang
   });
   install('fetch', async url => {
     fetchCalls.push(url);
+    if (url.endsWith('IDY28000_TEX.txt')) {
+      if (notesFail) throw new Error('Notes unavailable');
+      return { ok: true, text: async () => notes };
+    }
     if (metadataFails) throw new Error('Offline');
     return { ok: true, json: async () => [...times], text: async () => 'Satellite Notes\nCurrent observations' };
   });
   globalThis.setInterval = (fn, ms) => { intervals.push({ fn, ms }); return intervals.length; };
   Date.now = () => now;
   const settle = async predicate => {
+    await new Promise(resolve => setTimeout(resolve, 0));
     for (let i = 0; i < 100; i++) {
       if (predicate()) return;
       await new Promise(resolve => setTimeout(resolve, 10));
@@ -133,6 +142,18 @@ test('Running viewer keeps playing through new frames, failures, and layer chang
     elements.get('notes').click();
     await settle(() => elements.get('notes-body').children?.length === 1);
     assert.equal(elements.get('notes-modal').getAttribute('aria-hidden'), 'false');
+    let bulletin = elements.get('notes-body').children[0];
+    assert.deepEqual(bulletin.children.map(el => el.className), ['hw-note-id', 'hw-note-bomtext', 'hw-note-datetext', 'hw-note-satnotes', 'hw-note-satnotes']);
+    assert.equal(bulletin.children[3].children[0].textContent, 'First wrapped paragraph.');
+    assert.equal(bulletin.children[4].children[0].textContent, 'Final paragraph without a newline.');
+    notes = notes.replace('1800UTC', '0000UTC').replace('Final paragraph', 'Updated final paragraph');
+    poll();
+    await settle(() => elements.get('notes-body').children[0].children[2].children[0].textContent.includes('0000UTC'));
+    notesFail = true; poll();
+    await settle(() => elements.get('notes-body').dataset.refreshFailed === 'true');
+    assert.equal(elements.get('notes-body').children[0].children[4].children[0].textContent, 'Updated final paragraph without a newline.');
+    notesFail = false; poll();
+    await settle(() => elements.get('notes-body').dataset.refreshFailed === 'false');
     elements.get('close-notes').click(); assert.equal(elements.get('notes-modal').getAttribute('aria-hidden'), 'true');
     elements.get('faster').click(); assert.equal(elements.get('speed').value, 4);
     elements.get('slower').click(); assert.equal(elements.get('speed').value, 2);
@@ -155,6 +176,22 @@ test('Running viewer keeps playing through new frames, failures, and layer chang
     // Settings serialize to six decimals; allow that sub-pixel precision loss.
     assert.ok(cx - 350 >= west - 0.01 && cx + 350 <= east + 0.01);
     assert.ok(cy - 600 >= north - 0.01 && cy + 600 <= south + 0.01);
+
+    // Constrain the actual drag preview, before releasing the pointer. No CSS
+    // translation may expose the black canvas background, even at the limit.
+    await settle(() => elements.get('frame-count').textContent === '6 / 6 frames');
+    const map = elements.get('map'), satellite = elements.get('satellite');
+    const pointer = (type, x, y) => map.events.get(type)({ type, target: map, button: 0, pointerId: 3, clientX: x, clientY: y });
+    pointer('pointerdown', 300, 300);
+    const beforeDrag = canvasWrites.length;
+    pointer('pointermove', 100000, -100000);
+    await settle(() => canvasWrites.length > beforeDrag);
+    assert.ok(!satellite.style.transform);
+    const duringDrag = canvasWrites.length;
+    now += 1000; animate(); assert.equal(canvasWrites.length, duringDrag);
+    pointer('pointerup', 100000, -100000);
+    await settle(() => elements.get('frame-count').textContent === '6 / 6 frames');
+    assert.ok(!satellite.style.transform);
   } finally {
     globalThis.setInterval = realSetInterval; Date.now = realDateNow;
     // Let the debounced overlay work settle before restoring browser globals.

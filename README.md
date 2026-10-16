@@ -26,11 +26,15 @@ Settings and playback state are saved locally when browser storage is permitted.
 
 Zoom-out is limited by the satellite coverage and the current window dimensions. The full viewport stays inside that coverage, with map-centre limits preventing panning past its edges. The same constraints apply to mouse/keyboard controls, restored links and window/fullscreen resizing, so an older overly zoomed-out bookmark cannot reintroduce black bands outside the imagery.
 
+The drag preview itself uses the constrained view, rather than shifting a canvas beyond its edges and snapping back on release. Satellite and overlay tiles are drawn together only when ready; while tiles download, the last complete picture remains visible.
+
 New displays start with Day + Night, a full satellite-coverage view and playback enabled. Prior saved choices are retained. Stepping or scrubbing intentionally pauses playback; background checks continue. Space toggles playback, plus/minus zoom and arrow keys pan when the map has focus.
 
 ## Background updates
 
 The page polls the selected product's small `timesteps.json` file every minute. It uses published timestamps and keeps a rolling four-hour animation of up to 24 frames. Unchanged rendered frames are reused. New frames are downloaded and decoded off screen and enter playback only once every required satellite tile has loaded. A synchronous canvas draw replaces the image without an intermediate blank canvas.
+
+Satellite Notes are checked on startup, every minute and whenever opened, with browser caching bypassed. An open bulletin updates in place when its text changes. The dialog uses BoM's original ID, organisation, chart/issue heading and paragraph styles; plain-text line wraps are joined, and the final paragraph is retained even without a trailing newline. Failed checks retain the last bulletin with a refresh notice and retry automatically.
 
 If downloads fail, the current picture/loaded loop stays visible and failed images are retried. Layer, zoom, map centre, playback speed and overlays survive feed checks. Changing product or view keeps the previous picture until a replacement is ready. Map overlays load separately. Update/loading information is available inside **More**; a source or connection problem produces a BoM-style alert rather than silently displaying stale imagery. Satellite-only data is flagged after 45 minutes; lightning after 60 minutes to allow for its additional source latency. These are this viewer's thresholds, not BoM service guarantees.
 

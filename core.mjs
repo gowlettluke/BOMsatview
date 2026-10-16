@@ -43,6 +43,16 @@ export function overlayURL(id, z, x, y) {
 export function timelineURL(product) {
   return `${ORIGIN}/himawari/${PRODUCTS[product].id}/Himawari/timesteps.json`;
 }
+export function parseSatelliteNotes(text) {
+  const lines = text.replace(/^\uFEFF/, '').split(/\r\n|\r|\n/).map(line => line.trim());
+  if (!lines[0] || !lines[4] || !lines[5]) throw new Error('Invalid satellite bulletin');
+  return {
+    id: lines[0], organisation: lines.slice(1, 3), issued: lines.slice(4, 6),
+    // Source lines are wrapped for plain text. Keep paragraphs, including the
+    // final paragraph when the bulletin has no trailing blank line.
+    paragraphs: lines.slice(6).join('\n').trim().split(/\n\s*\n/).filter(Boolean).map(p => p.replace(/\s+/g, ' ')),
+  };
+}
 export function fitBounds(bounds, width, height) {
   const [west, north] = project(bounds.west, bounds.north);
   const [east, south] = project(bounds.east, bounds.south);

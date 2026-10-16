@@ -1,4 +1,4 @@
-import { PRODUCTS, PRESETS, COVERAGE, project, unproject, timestampMs, selectTimes, tileURL, overlayURL, timelineURL, fitBounds, minimumZoom, constrainView, tilesForView, normalizeSettings, FrameBuffer } from './core.mjs';
+import { ORIGIN, parseSatelliteNotes, PRODUCTS, PRESETS, COVERAGE, project, unproject, timestampMs, selectTimes, tileURL, overlayURL, timelineURL, fitBounds, minimumZoom, constrainView, tilesForView, normalizeSettings, FrameBuffer } from './core.mjs';
 
 const $ = id => document.getElementById(id);
 const STORAGE_KEY = 'bom-satellite-wall-v1';
@@ -131,36 +131,41 @@ async function renderFrame(product, stamp, view, w, h, r, token) {
   return surface;
 }
 let overlayRevision = 0;
-async function renderOverlays() {
-  const token = ++overlayRevision, vToken = revision;
-  // This single overlay surface need not share the animation's memory cap.
-  // Keep text and thin roads sharp on large/high-DPI wall displays.
-  const r = Math.min(globalThis.devicePixelRatio || 1, 2, 4096 / width, 2160 / height);
-  const view = { ...state }, w = width, h = height;
-  const layers = [state.roads && 'IDZ10006', state.boundaries && 'IDZ10030', state.coast && 'World', state.cities && 'IDM00013'].filter(Boolean);
+async function renderOverlaySurface(view, w, h, isCurrent = () => true) {
+  const r = Math.min(globalThis.devicePixelRatio || 1, 2, 4096 / w, 2160 / h);
+  const layers = [view.roads && 'IDZ10006', view.boundaries && 'IDZ10030', view.coast && 'World', view.cities && 'IDM00013'].filter(Boolean);
   const surface = makeSurface(r), ctx = surface.getContext('2d');
   const tiles = tilesForView(view, w, h, true);
   let failed = 0;
   for (const layer of layers) {
     const results = await Promise.allSettled(tiles.map(tile => loadImage(overlayURL(layer, tile.z, tile.x, tile.y))));
-    if (token !== overlayRevision || vToken !== revision) return;
+    if (!isCurrent()) return null;
     results.forEach((result, i) => {
       if (result.status === 'fulfilled') {
         const tile = tiles[i]; ctx.drawImage(result.value, tile.dx * r, tile.dy * r, tile.size * r + 0.5, tile.size * r + 0.5);
       } else failed++;
     });
   }
-  if (token !== overlayRevision || vToken !== revision) return;
+  return { surface, failed };
+}
+function drawOverlays(surface) {
   overlayCanvas.width = surface.width; overlayCanvas.height = surface.height;
   overlayCanvas.getContext('2d').drawImage(surface, 0, 0);
+}
+async function renderOverlays() {
+  const token = ++overlayRevision, vToken = revision;
+  const isCurrent = () => token === overlayRevision && vToken === revision && !drag;
+  const result = await renderOverlaySurface({ ...state }, width, height, isCurrent);
+  if (!result || !isCurrent()) return;
+  drawOverlays(result.surface);
   overlayCanvas.dataset.view = viewKey();
   if (displayed?.view === viewKey()) overlayCanvas.style.visibility = '';
-  overlayError = failed ? 'Some map overlays unavailable; imagery is still updating' : '';
+  overlayError = result.failed ? 'Some map overlays unavailable; imagery is still updating' : '';
   status();
 }
 function showFrame(stamp) {
   const surface = buffer.frames.get(stamp);
-  if (!surface) return;
+  if (!surface || drag) return;
   // One synchronous canvas draw: users never see an empty canvas between frames.
   if (satellite.width !== surface.width || satellite.height !== surface.height) {
     satellite.width = surface.width; satellite.height = surface.height;
@@ -260,6 +265,7 @@ async function refreshTimeline() {
   }
 }
 function changeView() {
+  drag = null;
   // Applies to buttons, wheel, keyboard, dragging, restored links and resize.
   // A valid centre alone is insufficient: the entire viewport must stay inside
   // the image coverage, otherwise zooming out exposes black bands.
@@ -379,31 +385,91 @@ document.addEventListener('click', event => {
   if (!event.target.closest('.settings-select')) toggleMenu('layers-menu', layerButtons, false);
   if (!event.target.closest('#more-select')) toggleMenu('more-menu', ['more'], false);
 });
-let notesText = null;
-$('notes').addEventListener('click', async () => {
-  const modal = $('notes-modal'), body = $('notes-body');
-  modal.style.display = 'block'; modal.classList.toggle('in', true); modal.setAttribute('aria-hidden', 'false');
-  $('close-notes').focus(); body.textContent = 'Loading Satellite Notes…';
-  if (!notesText) {
+let notesText = null, notesRequest = null;
+function renderNotes(text, refreshFailed = false) {
+  const bulletin = parseSatelliteNotes(text), content = document.createElement('div');
+  const add = (tag, className, lines) => {
+    const element = document.createElement(tag); element.className = className;
+    lines.forEach((line, i) => {
+      if (i) element.append(document.createElement('br'));
+      element.append(document.createTextNode(line));
+    });
+    content.append(element);
+  };
+  add('h1', 'hw-note-id', [bulletin.id]);
+  add('h2', 'hw-note-bomtext', bulletin.organisation);
+  add('h3', 'hw-note-datetext', bulletin.issued);
+  for (const paragraph of bulletin.paragraphs) add('p', 'hw-note-satnotes', [paragraph]);
+  if (refreshFailed) add('p', 'hw-note-refresh-status', ['Unable to refresh Satellite Notes. Showing the last received bulletin.']);
+  $('notes-body').replaceChildren(content);
+}
+function refreshNotes() {
+  if (notesRequest) return notesRequest;
+  notesRequest = (async () => {
     try {
-      const response = await fetch(`${timelineURL('daynight').split('/himawari/')[0]}/himawari/text/IDY28000_TEX.txt`, { cache: 'no-store', signal: AbortSignal.timeout(15000), referrerPolicy: 'no-referrer' });
+      const response = await fetch(`${ORIGIN}/himawari/text/IDY28000_TEX.txt`, { cache: 'no-store', signal: AbortSignal.timeout(15000), referrerPolicy: 'no-referrer' });
       if (!response.ok) throw new Error('Notes unavailable');
-      notesText = await response.text();
-    } catch { body.textContent = 'Satellite Notes text is not available. Please check again later.'; return; }
-  }
-  const text = document.createElement('pre'); text.textContent = notesText;
-  body.replaceChildren(text);
+      const text = await response.text();
+      parseSatelliteNotes(text);
+      if (text !== notesText || $('notes-body').dataset.refreshFailed === 'true') renderNotes(text);
+      notesText = text; $('notes-body').dataset.refreshFailed = 'false';
+    } catch {
+      if (notesText) renderNotes(notesText, true);
+      else $('notes-body').textContent = 'Satellite Notes text is not available. Please check again later.';
+      $('notes-body').dataset.refreshFailed = 'true';
+    } finally { notesRequest = null; }
+  })();
+  return notesRequest;
+}
+$('notes').addEventListener('click', () => {
+  const modal = $('notes-modal');
+  modal.style.display = 'block'; modal.classList.toggle('in', true); modal.setAttribute('aria-hidden', 'false');
+  $('close-notes').focus();
+  if (!notesText) $('notes-body').textContent = 'Loading Satellite Notes…';
+  void refreshNotes();
 });
 function closeNotes() {
   $('notes-modal').style.display = 'none'; $('notes-modal').classList.toggle('in', false); $('notes-modal').setAttribute('aria-hidden', 'true'); $('notes').focus();
 }
 $('close-notes').addEventListener('click', closeNotes);
 $('notes-modal').addEventListener('click', event => { if (event.target === $('notes-modal')) closeNotes(); });
-let drag = null;
+let drag = null, dragRendering = false;
+function dragView(event) {
+  const world = 512 * 2 ** drag.view.zoom;
+  const [lon, lat] = unproject(drag.center[0] - (event.clientX - drag.x), drag.center[1] - (event.clientY - drag.y), world);
+  return { ...drag.view, ...constrainView({ ...drag.view, lon, lat }, width, height) };
+}
+async function previewDrag() {
+  if (dragRendering) return;
+  dragRendering = true;
+  try {
+    // Coalesce moves while downloading. Draw only complete, constrained views;
+    // translating a viewport-sized canvas exposes empty strips during a drag.
+    while (drag && drag.rendered !== drag.pending) {
+      const active = drag, view = active.pending, token = revision;
+      const isCurrent = () => drag === active && revision === token && active.pending === view;
+      try {
+        const [surface, overlays] = await Promise.all([
+          renderFrame(active.product, active.stamp, view, width, height, ratio, token),
+          renderOverlaySurface(view, width, height, isCurrent),
+        ]);
+        if (!surface || !overlays || !isCurrent()) continue;
+        satellite.getContext('2d', { alpha: false }).drawImage(surface, 0, 0);
+        drawOverlays(overlays.surface); overlayCanvas.style.visibility = '';
+        active.rendered = view;
+      } catch {
+        // Keep the last complete view if a tile fails; release retries normally.
+        if (isCurrent()) active.rendered = view;
+      }
+    }
+  } finally { dragRendering = false; }
+}
 map.addEventListener('pointerdown', event => {
-  if (event.button !== 0 || event.target.closest('button, a, input, select')) return;
+  if (event.button !== 0 || event.target.closest('button, a, input, select') || !displayed) return;
   map.focus({ preventScroll: true }); map.setPointerCapture(event.pointerId);
-  drag = { id: event.pointerId, x: event.clientX, y: event.clientY, center: project(state.lon, state.lat, 512 * 2 ** state.zoom) };
+  const view = { ...state };
+  drag = { id: event.pointerId, x: event.clientX, y: event.clientY, view, pending: view, rendered: view,
+    product: displayed.product, stamp: displayed.stamp, center: project(view.lon, view.lat, 512 * 2 ** view.zoom) };
 });
 map.addEventListener('pointermove', event => {
   if (state.coordinates) {
@@ -414,22 +480,20 @@ map.addEventListener('pointermove', event => {
     $('mousePosition').hidden = false;
   }
   if (!drag || drag.id !== event.pointerId) return;
-  const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
-  satellite.style.transform = `translate(${dx}px,${dy}px)`;
-  overlayCanvas.style.transform = `translate(${dx}px,${dy}px)`;
+  const view = dragView(event);
+  if (Math.abs(view.lon - drag.pending.lon) + Math.abs(view.lat - drag.pending.lat) < 1e-9) return;
+  drag.pending = view; void previewDrag();
 });
 map.addEventListener('pointerleave', () => { $('mousePosition').hidden = true; });
 function endDrag(event) {
   if (!drag || drag.id !== event.pointerId) return;
-  const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
-  const [lon, lat] = unproject(drag.center[0] - dx, drag.center[1] - dy, 512 * 2 ** state.zoom);
+  const view = event.type === 'pointercancel' ? drag.pending : dragView(event);
   drag = null;
-  if (Math.abs(dx) + Math.abs(dy) < 3) { satellite.style.transform = ''; overlayCanvas.style.transform = ''; return; }
-  state.lon = Math.max(85, Math.min(180, lon)); state.lat = Math.max(-55, Math.min(20, lat));
-  $('region').value = 'custom'; changeView();
+  if (Math.abs(view.lon - state.lon) + Math.abs(view.lat - state.lat) < 1e-9) { void renderOverlays(); return; }
+  Object.assign(state, view); $('region').value = 'custom'; changeView();
 }
 map.addEventListener('pointerup', endDrag);
-map.addEventListener('pointercancel', () => { drag = null; satellite.style.transform = ''; overlayCanvas.style.transform = ''; });
+map.addEventListener('pointercancel', endDrag);
 map.addEventListener('wheel', event => {
   if (event.target.closest('button, a, input, select')) return;
   event.preventDefault(); const rect = map.getBoundingClientRect();
@@ -477,6 +541,6 @@ setInterval(() => {
   const index = ready.indexOf(currentTime);
   showFrame(ready[(index + 1) % ready.length]);
 }, 16);
-setInterval(() => { void refreshTimeline(); }, 60000);
+setInterval(() => { void refreshTimeline(); void refreshNotes(); }, 60000);
 setInterval(() => { $('clock').textContent = `${formatTime.format(Date.now())} AEST`; status(); }, 1000);
-syncControls(); resize(); renderLegend(state.product); void refreshTimeline();
+syncControls(); resize(); renderLegend(state.product); void refreshTimeline(); void refreshNotes();

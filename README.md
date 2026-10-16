@@ -32,7 +32,9 @@ The page polls the selected product's small `timesteps.json` file every minute. 
 
 If downloads fail, the current picture/loaded loop stays visible and failed images are retried. Layer, zoom, map centre, playback speed and overlays survive feed checks. Changing product or view keeps the previous picture until a replacement is ready. Map overlays load separately. Update/loading information is available inside **More**; a source or connection problem produces a BoM-style alert rather than silently displaying stale imagery. Satellite-only data is flagged after 45 minutes; lightning after 60 minutes to allow for its additional source latency. These are this viewer's thresholds, not BoM service guarantees.
 
-The renderer bounds memory to 24 frame surfaces, each at most 1600×1000 pixels, plus a 48-entry tile cache and visible/overlay canvases. Tile downloads are limited to six concurrent requests. Keep the display computer awake and the tab visible.
+The renderer bounds memory to 24 frame surfaces, each at most 1600×1000 pixels, plus a 48-entry tile cache and visible/overlay canvases. The single static overlay uses display resolution (up to 2× pixel ratio, bounded to 4096×2160) so labels and fine lines are not softened by the animation's memory cap. Tile downloads are limited to six concurrent requests. Keep the display computer awake and the tab visible.
+
+Tile selection matches the nearest-resolution rule in the original BoM viewer's OpenLayers code. Imagery uses 512px tiles and map overlays use 256px tiles, with their grid levels selected independently for the same geographic view. Flooring a fractional zoom would enlarge the lower-resolution place names and strokes; the renderer selects the nearest resolution instead. Regression tests cover the supplied comparison screenshot's zoom and the grid-level transition points.
 
 ## Work-network access
 

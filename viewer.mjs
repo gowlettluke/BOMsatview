@@ -112,9 +112,9 @@ async function loadImage(url) {
   while (imageCache.size > 48) imageCache.delete(imageCache.keys().next().value);
   return promise;
 }
-function makeSurface() {
+function makeSurface(scale = ratio) {
   const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(width * ratio)); canvas.height = Math.max(1, Math.round(height * ratio));
+  canvas.width = Math.max(1, Math.round(width * scale)); canvas.height = Math.max(1, Math.round(height * scale));
   return canvas;
 }
 async function renderFrame(product, stamp, view, w, h, r, token) {
@@ -133,9 +133,12 @@ async function renderFrame(product, stamp, view, w, h, r, token) {
 let overlayRevision = 0;
 async function renderOverlays() {
   const token = ++overlayRevision, vToken = revision;
-  const view = { ...state }, w = width, h = height, r = ratio;
+  // This single overlay surface need not share the animation's memory cap.
+  // Keep text and thin roads sharp on large/high-DPI wall displays.
+  const r = Math.min(globalThis.devicePixelRatio || 1, 2, 4096 / width, 2160 / height);
+  const view = { ...state }, w = width, h = height;
   const layers = [state.roads && 'IDZ10006', state.boundaries && 'IDZ10030', state.coast && 'World', state.cities && 'IDM00013'].filter(Boolean);
-  const surface = makeSurface(), ctx = surface.getContext('2d');
+  const surface = makeSurface(r), ctx = surface.getContext('2d');
   const tiles = tilesForView(view, w, h, true);
   let failed = 0;
   for (const layer of layers) {

@@ -51,9 +51,14 @@ export function fitBounds(bounds, width, height) {
   return { lon, lat, zoom: clamp(Math.log2(world / 512), 0, 6) };
 }
 export function tilesForView(view, width, height, overlay = false) {
-  // A tile remains on screen until its complete frame is ready. Lower source
-  // zooms on large displays limit requests without altering the selected view.
-  const z = clamp(Math.floor(view.zoom + (overlay ? 1 : 0)), 0, overlay ? 7 : 6);
+  // Match Satview's OpenLayers grid: choose the nearest *resolution*, rather
+  // than flooring zoom. Static overlays use 256px tiles; imagery uses 512px.
+  // The switch lies at log2(4/3) of a zoom step, not at a half-step. Flooring
+  // enlarged city names and strokes by up to 2x at intermediate map zooms.
+  const sourceZoom = view.zoom + (overlay ? 1 : 0);
+  const lower = Math.floor(sourceZoom);
+  const nearest = 2 ** (sourceZoom - lower) >= 4 / 3 ? lower + 1 : lower;
+  const z = clamp(nearest, 0, overlay ? 7 : 6);
   const world = 512 * 2 ** view.zoom;
   const step = world / 2 ** z;
   const [cx, cy] = project(view.lon, view.lat, world);

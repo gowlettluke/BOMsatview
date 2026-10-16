@@ -45,6 +45,7 @@ function syncControls() {
   for (const button of all('.animation-slower')) button.disabled = speedIndex === 0;
   for (const button of all('.animation-faster')) button.disabled = speedIndex === 5;
   $('mousePosition').hidden = !state.coordinates;
+  if (!displayed) $('display-product').textContent = PRODUCTS[state.product].name;
 }
 function renderLegend(product) {
   $('lightning-credit').hidden = product !== 'lightning';
@@ -169,7 +170,8 @@ function showFrame(stamp) {
   currentTime = stamp;
   $('display-product').textContent = PRODUCTS[buffer.product].short;
   const date = timestampMs(stamp);
-  for (const el of all('.product-date')) el.textContent = bomDate.format(date);
+  const parts = Object.fromEntries(bomDate.formatToParts(date).filter(p => p.type !== 'literal').map(p => [p.type, p.value]));
+  for (const el of all('.product-date')) el.textContent = `${parts.weekday}, ${parts.day} ${parts.month} ${parts.year}`;
   for (const el of all('.product-time')) el.textContent = `${bomTime.format(date)} AEST`;
   for (const el of all('.product-date-short')) el.textContent = formatDate.format(date);
   for (const el of all('.product-time-short')) el.textContent = `${bomTime.format(date)} AEST`;
@@ -334,6 +336,12 @@ $('fullscreen').addEventListener('click', async () => {
     if (document.fullscreenElement) await document.exitFullscreen();
     else await document.documentElement.requestFullscreen();
   } catch { toast('Fullscreen is unavailable here. Try your browser’s F11 key.'); }
+});
+document.addEventListener('fullscreenchange', () => {
+  const active = Boolean(document.fullscreenElement);
+  $('fullscreen').textContent = active ? 'fullscreen_exit' : 'fullscreen';
+  $('fullscreen').title = active ? 'Exit Fullscreen' : 'Go Fullscreen';
+  $('fullscreen').setAttribute('aria-label', active ? 'Exit Fullscreen' : 'Go Fullscreen');
 });
 $('share').addEventListener('click', async () => {
   persist();

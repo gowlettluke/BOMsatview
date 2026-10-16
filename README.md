@@ -26,19 +26,19 @@ Settings and playback state are saved locally when browser storage is permitted.
 
 Zoom-out is limited by the satellite coverage and the current window dimensions. The full viewport stays inside that coverage, with map-centre limits preventing panning past its edges. The same constraints apply to mouse/keyboard controls, restored links and window/fullscreen resizing, so an older overly zoomed-out bookmark cannot reintroduce black bands outside the imagery.
 
-The drag preview itself uses the constrained view, rather than shifting a canvas beyond its edges and snapping back on release. Satellite and overlay tiles are drawn together only when ready; while tiles download, the last complete picture remains visible.
+The drag preview uses the constrained view throughout the gesture. Pointer moves redraw the already loaded imagery and overlay atlases synchronously. Neighbouring imagery and optional overlay tiles download independently; slow roads or place-name requests never block map movement. Panning remains inside both satellite coverage and the loaded imagery until additional neighbouring tiles arrive. At the minimum landscape zoom the horizontal axis is fixed by coverage, while vertical dragging remains available.
 
 New displays start with Day + Night, a full satellite-coverage view and playback enabled. Prior saved choices are retained. Stepping or scrubbing intentionally pauses playback; background checks continue. Space toggles playback, plus/minus zoom and arrow keys pan when the map has focus.
 
 ## Background updates
 
-The page polls the selected product's small `timesteps.json` file every minute. It uses published timestamps and keeps a rolling four-hour animation of up to 24 frames. Unchanged rendered frames are reused. New frames are downloaded and decoded off screen and enter playback only once every required satellite tile has loaded. A synchronous canvas draw replaces the image without an intermediate blank canvas.
+The page polls the selected product's small `timesteps.json` file every minute. It uses published timestamps and keeps a rolling four-hour animation of up to 24 frames. Unchanged loaded tile sets are reused. New frames are downloaded and decoded off screen and enter playback only once every required satellite tile has loaded. A synchronous atlas draw replaces the image without an intermediate blank canvas.
 
 Satellite Notes are checked on startup, every minute and whenever opened, with browser caching bypassed. An open bulletin updates in place when its text changes. The dialog uses BoM's original ID, organisation, chart/issue heading and paragraph styles; plain-text line wraps are joined, and the final paragraph is retained even without a trailing newline. Failed checks retain the last bulletin with a refresh notice and retry automatically.
 
 If downloads fail, the current picture/loaded loop stays visible and failed images are retried. Layer, zoom, map centre, playback speed and overlays survive feed checks. Changing product or view keeps the previous picture until a replacement is ready. Map overlays load separately. Update/loading information is available inside **More**; a source or connection problem produces a BoM-style alert rather than silently displaying stale imagery. Satellite-only data is flagged after 45 minutes; lightning after 60 minutes to allow for its additional source latency. These are this viewer's thresholds, not BoM service guarantees.
 
-The renderer bounds memory to 24 frame surfaces, each at most 1600×1000 pixels, plus a 48-entry tile cache and visible/overlay canvases. The single static overlay uses display resolution (up to 2× pixel ratio, bounded to 4096×2160) so labels and fine lines are not softened by the animation's memory cap. Tile downloads are limited to six concurrent requests. Keep the display computer awake and the tab visible.
+The animation buffer retains at most 24 complete sets of original JPEG tiles, plus a 48-entry request cache. It builds only the current imagery and overlay atlases at native tile resolution and draws those directly to canvases sized to the display's device-pixel ratio. There are no 24 full-screen canvas copies and no 1600×1000 reduction followed by browser enlargement. Like the original OpenLayers canvas renderer, tiles are joined at their native size before one pixel-aligned mosaic draw; individual tiles are not stretched by an extra half pixel. Tile downloads are limited to six concurrent requests. Keep the display computer awake and the tab visible.
 
 Tile selection matches the nearest-resolution rule in the original BoM viewer's OpenLayers code. Imagery uses 512px tiles and map overlays use 256px tiles, with their grid levels selected independently for the same geographic view. Flooring a fractional zoom would enlarge the lower-resolution place names and strokes; the renderer selects the nearest resolution instead. Regression tests cover the supplied comparison screenshot's zoom and the grid-level transition points.
 
@@ -65,7 +65,7 @@ Serve `dist/` with a static HTTP server for local development; module scripts ne
 - `core.mjs`: products, projection, TMS URLs, settings validation and ready-frame buffer.
 - `viewer.mjs`: rendering, background updates, original BoM controls, notes and saved settings.
 - `assets/`: original BoM presentation assets (see `NOTICE.md`).
-- `tests/`: projection/timestamp/buffer correctness plus async viewer tests for refresh, failed feeds/tiles, recovery, pausing, all five products, Roads, coordinates, legend toggling, speed controls and notes.
+- `tests/`: projection/timestamp/buffer correctness plus async viewer tests for refresh, failed feeds/tiles, recovery, pausing, all five products, Roads, coordinates, legend toggling, speed controls, notes, native display resolution and immediate drag redraws while overlay requests are held pending.
 - `.github/workflows/pages.yml`: checks, packaging and GitHub Pages deployment.
 
 The tests use simulated network/image events and do not replace checks on the actual work computer. Live HTTPS feeds and image tiles are verified separately. This uses Satview's existing public delivery endpoints rather than a documented versioned API, so future source changes may require maintenance.

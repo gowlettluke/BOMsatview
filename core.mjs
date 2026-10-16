@@ -80,7 +80,7 @@ export function constrainView(view, width, height) {
   const [lon, lat] = unproject(x, y, world);
   return { lon, lat, zoom };
 }
-export function tilesForView(view, width, height, overlay = false) {
+export function tilesForView(view, width, height, overlay = false, padding = 0) {
   // Match Satview's OpenLayers grid: choose the nearest *resolution*, rather
   // than flooring zoom. Static overlays use 256px tiles; imagery uses 512px.
   // The switch lies at log2(4/3) of a zoom step, not at a half-step. Flooring
@@ -96,10 +96,10 @@ export function tilesForView(view, width, height, overlay = false) {
   const [bx0, by0] = project(COVERAGE.west, COVERAGE.north, 2 ** z);
   const [bx1, by1] = project(COVERAGE.east, COVERAGE.south, 2 ** z);
   const out = [];
-  const x0 = Math.max(0, Math.floor(left / step), Math.floor(bx0));
-  const y0 = Math.max(0, Math.floor(top / step), Math.floor(by0));
-  const x1 = Math.min(2 ** z - 1, Math.ceil((left + width) / step) - 1, Math.ceil(bx1) - 1);
-  const y1 = Math.min(2 ** z - 1, Math.ceil((top + height) / step) - 1, Math.ceil(by1) - 1);
+  const x0 = Math.max(0, Math.floor(left / step) - padding, Math.floor(bx0));
+  const y0 = Math.max(0, Math.floor(top / step) - padding, Math.floor(by0));
+  const x1 = Math.min(2 ** z - 1, Math.ceil((left + width) / step) - 1 + padding, Math.ceil(bx1) - 1);
+  const y1 = Math.min(2 ** z - 1, Math.ceil((top + height) / step) - 1 + padding, Math.ceil(by1) - 1);
   for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
     out.push({ z, x, y, dx: x * step - left, dy: y * step - top, size: step });
   }

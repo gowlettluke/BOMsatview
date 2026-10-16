@@ -20,7 +20,7 @@ test('Running viewer keeps playing through new frames, failures, and layer chang
     append(...children) { (this.children ||= []).push(...children); }
     setPointerCapture() {}
     getBoundingClientRect() { return { ...viewport, left: 0, top: 0 }; }
-    getContext() { return { fillRect() {}, drawImage: (...args) => { if (this.id === 'satellite') canvasWrites.push(args[0]); } }; }
+    getContext() { return { fillRect() {}, clearRect() {}, drawImage: (...args) => { if (this.id === 'satellite') canvasWrites.push(args); } }; }
     matches() { return false; }
     focus() {}
     click() { this.events.get('click')?.({ target: this, stopPropagation() {} }); }
@@ -33,6 +33,8 @@ test('Running viewer keeps playing through new frames, failures, and layer chang
   let times = ['202610162140', '202610162150', '202610162200'];
   let notes = 'IDY28000\r\nAustralian Government Bureau of Meteorology\r\nBureau National Operations Centre\r\n\r\nSatellite Notes for 1800UTC Chart\r\nIssued at 6:07 am EDT Saturday on 17 October 2026\r\n\r\nFirst wrapped\r\nparagraph.\r\n\r\nFinal paragraph without a newline.';
   let notesFail = false;
+  let holdOverlayLoads = false;
+  const pendingOverlays = [];
   const originalGlobals = new Map();
   const install = (key, value) => { originalGlobals.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { value, configurable: true, writable: true }); };
   const fetchCalls = [];
@@ -49,12 +51,15 @@ test('Running viewer keeps playing through new frames, failures, and layer chang
   install('history', { replaceState: (_a, _b, value) => { location.hash = value; } });
   install('localStorage', { getItem: () => '{"product":"zehr","speed":2}', setItem() {} });
   install('navigator', { onLine: true });
+  install('devicePixelRatio', 1.5);
   install('ResizeObserver', class { constructor(callback) { resizeObserverCallback = callback; } observe() {} });
   install('Image', class {
     set src(value) {
       if (!value) return;
       images.push(value);
-      queueMicrotask(() => { if (imageFails && value.includes('/himawari/')) this.onerror?.(); else this.onload?.(); });
+      const complete = () => { if (imageFails && value.includes('/himawari/')) this.onerror?.(); else this.onload?.(); };
+      if (holdOverlayLoads && value.includes('/tiles/')) pendingOverlays.push(complete);
+      else queueMicrotask(complete);
     }
     async decode() {}
   });
@@ -179,17 +184,32 @@ test('Running viewer keeps playing through new frames, failures, and layer chang
 
     // Constrain the actual drag preview, before releasing the pointer. No CSS
     // translation may expose the black canvas background, even at the limit.
-    await settle(() => elements.get('frame-count').textContent === '6 / 6 frames');
+    await settle(() => elements.get('frame-count').textContent === '6 / 6 frames' && elements.get('satellite').width === 700 * 1.5);
     const map = elements.get('map'), satellite = elements.get('satellite');
+    assert.equal(satellite.width, 700 * 1.5);
+    assert.equal(satellite.height, 1200 * 1.5);
+    // The original tile atlas is copied straight to device pixels in one draw,
+    // rather than downsampling each tile and then enlarging the screen canvas.
+    assert.equal(canvasWrites.at(-1).length, 9);
+    assert.ok(canvasWrites.at(-1).slice(5).every(Number.isInteger));
     const pointer = (type, x, y) => map.events.get(type)({ type, target: map, button: 0, pointerId: 3, clientX: x, clientY: y });
+    holdOverlayLoads = true;
     pointer('pointerdown', 300, 300);
     const beforeDrag = canvasWrites.length;
+    for (let i = 1; i <= 20; i++) pointer('pointermove', 300 + i * 5, 300);
+    // No async settle: every move must paint immediately, even though optional
+    // neighbouring overlay tiles have not completed their network requests.
+    assert.equal(canvasWrites.length, beforeDrag + 20);
+    await settle(() => pendingOverlays.length > 0);
     pointer('pointermove', 100000, -100000);
-    await settle(() => canvasWrites.length > beforeDrag);
+    const afterHeldMove = canvasWrites.length;
+    assert.ok(afterHeldMove > beforeDrag + 20);
     assert.ok(!satellite.style.transform);
     const duringDrag = canvasWrites.length;
     now += 1000; animate(); assert.equal(canvasWrites.length, duringDrag);
     pointer('pointerup', 100000, -100000);
+    holdOverlayLoads = false;
+    for (const complete of pendingOverlays.splice(0)) complete();
     await settle(() => elements.get('frame-count').textContent === '6 / 6 frames');
     assert.ok(!satellite.style.transform);
   } finally {

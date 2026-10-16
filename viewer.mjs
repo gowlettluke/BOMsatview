@@ -15,6 +15,7 @@ const bomDate = new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Brisbane
 const bomTime = new Intl.DateTimeFormat('en-AU', { timeZone: 'Australia/Brisbane', hour: '2-digit', minute: '2-digit', hour12: true });
 const all = selector => document.querySelectorAll(selector);
 let width = 1, height = 1, ratio = 1, revision = 0, displayed = null;
+let imageryAtlas = null, overlayAtlas = null;
 let available = [], ready = [], timelineProduct = null, currentTime = null;
 let lastCheck = null, lastError = '', overlayError = '', warming = false, refreshing = false, refreshAgain = false;
 let toastTimer, resizeTimer, viewTimer, metadataController;
@@ -112,65 +113,80 @@ async function loadImage(url) {
   while (imageCache.size > 48) imageCache.delete(imageCache.keys().next().value);
   return promise;
 }
-function makeSurface(scale = ratio) {
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.round(width * scale)); canvas.height = Math.max(1, Math.round(height * scale));
-  return canvas;
-}
-async function renderFrame(product, stamp, view, w, h, r, token) {
-  const tiles = tilesForView(view, w, h);
-  if (!tiles.length) throw new Error('Move the map back into the Australian satellite coverage');
+// Keep original JPEG tiles in the animation buffer. Only the active imagery
+// and overlay atlases are canvases; there are no 24 downsampled screen copies.
+async function renderFrame(product, stamp, view, w, h, token, padding = 0) {
+  const tiles = tilesForView(view, w, h, false, padding);
+  if (!tiles.length) throw new Error('No satellite coverage');
   const images = await Promise.all(tiles.map(tile => loadImage(tileURL(product, stamp, tile.z, tile.x, tile.y))));
-  if (token !== revision) return null;
-  const surface = makeSurface(), ctx = surface.getContext('2d', { alpha: false });
-  ctx.fillStyle = '#060d13'; ctx.fillRect(0, 0, surface.width, surface.height);
-  for (let i = 0; i < tiles.length; i++) {
-    const tile = tiles[i];
-    ctx.drawImage(images[i], tile.dx * r, tile.dy * r, tile.size * r + 0.5, tile.size * r + 0.5);
-  }
-  return surface;
+  return token === revision ? { tiles, images } : null;
+}
+function makeAtlas(groups, tileSize, previous = null) {
+  const tiles = groups.flatMap(group => group.tiles);
+  if (!tiles.length) return null;
+  const x0 = Math.min(...tiles.map(tile => tile.x)), y0 = Math.min(...tiles.map(tile => tile.y));
+  const x1 = Math.max(...tiles.map(tile => tile.x)) + 1, y1 = Math.max(...tiles.map(tile => tile.y)) + 1;
+  const canvas = previous?.canvas || document.createElement('canvas');
+  const w = (x1 - x0) * tileSize, h = (y1 - y0) * tileSize;
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+  for (const group of groups) group.tiles.forEach((tile, i) => {
+    if (group.images[i]) ctx.drawImage(group.images[i], (tile.x - x0) * tileSize, (tile.y - y0) * tileSize);
+  });
+  return { canvas, x0, y0, x1, y1, z: tiles[0].z, tileSize };
+}
+function drawAtlas(atlas, canvas, view, opaque = false) {
+  const w = Math.max(1, Math.round(width * ratio)), h = Math.max(1, Math.round(height * ratio));
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  const ctx = canvas.getContext('2d', opaque ? { alpha: false } : undefined);
+  if (opaque) { ctx.fillStyle = '#060d13'; ctx.fillRect(0, 0, w, h); }
+  else ctx.clearRect(0, 0, w, h);
+  if (!atlas) return;
+  const world = 512 * 2 ** view.zoom, step = world / 2 ** atlas.z;
+  const [cx, cy] = project(view.lon, view.lat, world);
+  // Satview's canvas renderer assembles tiles at their native size and scales
+  // the mosaic once, rounding its destination rectangle to device pixels.
+  // Per-tile stretching (+0.5px) and a second CSS upscale softened our version.
+  ctx.drawImage(atlas.canvas, 0, 0, atlas.canvas.width, atlas.canvas.height,
+    Math.round((atlas.x0 * step - cx + width / 2) * ratio),
+    Math.round((atlas.y0 * step - cy + height / 2) * ratio),
+    Math.round((atlas.x1 - atlas.x0) * step * ratio),
+    Math.round((atlas.y1 - atlas.y0) * step * ratio));
 }
 let overlayRevision = 0;
-async function renderOverlaySurface(view, w, h, isCurrent = () => true) {
-  const r = Math.min(globalThis.devicePixelRatio || 1, 2, 4096 / w, 2160 / h);
+async function loadOverlayAtlas(view, w, h, isCurrent = () => true, padding = 0) {
   const layers = [view.roads && 'IDZ10006', view.boundaries && 'IDZ10030', view.coast && 'World', view.cities && 'IDM00013'].filter(Boolean);
-  const surface = makeSurface(r), ctx = surface.getContext('2d');
-  const tiles = tilesForView(view, w, h, true);
+  const tiles = tilesForView(view, w, h, true, padding), groups = [];
   let failed = 0;
   for (const layer of layers) {
     const results = await Promise.allSettled(tiles.map(tile => loadImage(overlayURL(layer, tile.z, tile.x, tile.y))));
     if (!isCurrent()) return null;
-    results.forEach((result, i) => {
-      if (result.status === 'fulfilled') {
-        const tile = tiles[i]; ctx.drawImage(result.value, tile.dx * r, tile.dy * r, tile.size * r + 0.5, tile.size * r + 0.5);
-      } else failed++;
+    const images = results.map(result => {
+      if (result.status === 'fulfilled') return result.value;
+      failed++; return null;
     });
+    groups.push({ tiles, images });
   }
-  return { surface, failed };
-}
-function drawOverlays(surface) {
-  overlayCanvas.width = surface.width; overlayCanvas.height = surface.height;
-  overlayCanvas.getContext('2d').drawImage(surface, 0, 0);
+  return { atlas: makeAtlas(groups, 256), failed };
 }
 async function renderOverlays() {
   const token = ++overlayRevision, vToken = revision;
   const isCurrent = () => token === overlayRevision && vToken === revision && !drag;
-  const result = await renderOverlaySurface({ ...state }, width, height, isCurrent);
+  const result = await loadOverlayAtlas({ ...state }, width, height, isCurrent, 1);
   if (!result || !isCurrent()) return;
-  drawOverlays(result.surface);
+  overlayAtlas = result.atlas;
+  drawAtlas(overlayAtlas, overlayCanvas, state);
   overlayCanvas.dataset.view = viewKey();
   if (displayed?.view === viewKey()) overlayCanvas.style.visibility = '';
   overlayError = result.failed ? 'Some map overlays unavailable; imagery is still updating' : '';
   status();
 }
 function showFrame(stamp) {
-  const surface = buffer.frames.get(stamp);
-  if (!surface || drag) return;
-  // One synchronous canvas draw: users never see an empty canvas between frames.
-  if (satellite.width !== surface.width || satellite.height !== surface.height) {
-    satellite.width = surface.width; satellite.height = surface.height;
-  }
-  satellite.getContext('2d', { alpha: false }).drawImage(surface, 0, 0);
+  const frame = buffer.frames.get(stamp);
+  if (!frame || drag) return;
+  imageryAtlas = makeAtlas([frame], 512, imageryAtlas);
+  drawAtlas(imageryAtlas, satellite, state, true);
   satellite.style.transform = ''; overlayCanvas.style.transform = '';
   if (overlayCanvas.dataset.view !== viewKey()) overlayCanvas.style.visibility = 'hidden';
   else overlayCanvas.style.visibility = '';
@@ -199,7 +215,7 @@ async function warmFrames() {
   const token = revision;
   if (warmingToken === token) return;
   warmingToken = token; warming = true;
-  const product = state.product, key = viewKey(), view = { ...state }, w = width, h = height, r = ratio;
+  const product = state.product, key = viewKey(), view = { ...state }, w = width, h = height;
   buffer.reset(product, key); buffer.setTimeline(available);
   status();
   let failures = 0;
@@ -210,7 +226,7 @@ async function warmFrames() {
       const stamp = buffer.missingTimes().find(t => (failedFrames.get(`${product}/${key}/${t}`) || 0) < Date.now() - 45000);
       if (!stamp) break;
       try {
-        const surface = await renderFrame(product, stamp, view, w, h, r, token);
+        const surface = await renderFrame(product, stamp, view, w, h, token);
         if (!surface || token !== revision) return;
         buffer.put(stamp, surface);
         failedFrames.delete(`${product}/${key}/${stamp}`);
@@ -289,9 +305,9 @@ function resize() {
   const nextWidth = Math.max(1, Math.round(rect.width)), nextHeight = Math.max(1, Math.round(rect.height));
   if (nextWidth === width && nextHeight === height) return;
   width = nextWidth; height = nextHeight;
-  // At most 1600×1000 pixels per surface, 24 surfaces per loop; no unbounded
-  // accumulation of old frame canvases during all-day use.
-  ratio = Math.min(1, 1600 / width, 1000 / height);
+  // Match the display backing resolution, as in BoM/OpenLayers. The loop
+  // stores source tiles instead of allocating 24 screen-sized canvases.
+  ratio = globalThis.devicePixelRatio || 1;
   if (!hasView && !displayed && !available.length) Object.assign(state, fitBounds(COVERAGE, width, height));
   changeView();
 }
@@ -433,43 +449,56 @@ function closeNotes() {
 }
 $('close-notes').addEventListener('click', closeNotes);
 $('notes-modal').addEventListener('click', event => { if (event.target === $('notes-modal')) closeNotes(); });
-let drag = null, dragRendering = false;
-function dragView(event) {
-  const world = 512 * 2 ** drag.view.zoom;
-  const [lon, lat] = unproject(drag.center[0] - (event.clientX - drag.x), drag.center[1] - (event.clientY - drag.y), world);
-  return { ...drag.view, ...constrainView({ ...drag.view, lon, lat }, width, height) };
+let drag = null;
+function requestedDragView(active) {
+  const world = 512 * 2 ** active.view.zoom;
+  const [lon, lat] = unproject(active.center[0] - (active.pointerX - active.x), active.center[1] - (active.pointerY - active.y), world);
+  return { ...active.view, ...constrainView({ ...active.view, lon, lat }, width, height) };
 }
-async function previewDrag() {
-  if (dragRendering) return;
-  dragRendering = true;
+function loadedDragView(view, atlas) {
+  const world = 512 * 2 ** view.zoom, step = world / 2 ** atlas.z;
+  const [cx, cy] = project(view.lon, view.lat, world);
+  // Full source tiles include spare pixels beyond the viewport. Keep newly
+  // exposed imagery covered while more neighbouring tiles load, without ever
+  // making mouse movement wait for optional roads/place-name downloads.
+  const x = Math.max(atlas.x0 * step + width / 2, Math.min(atlas.x1 * step - width / 2, cx));
+  const y = Math.max(atlas.y0 * step + height / 2, Math.min(atlas.y1 * step - height / 2, cy));
+  const [lon, lat] = unproject(x, y, world);
+  return { ...view, lon, lat };
+}
+function drawDrag(active) {
+  if (drag !== active) return;
+  const wanted = requestedDragView(active);
+  active.pending = loadedDragView(wanted, imageryAtlas);
+  drawAtlas(imageryAtlas, satellite, active.pending, true);
+  drawAtlas(overlayAtlas, overlayCanvas, active.pending);
+  overlayCanvas.style.visibility = '';
+}
+async function extendDrag(active) {
+  if (active.loading) return;
+  active.loading = true;
+  const token = revision, isCurrent = () => drag === active && revision === token;
   try {
-    // Coalesce moves while downloading. Draw only complete, constrained views;
-    // translating a viewport-sized canvas exposes empty strips during a drag.
-    while (drag && drag.rendered !== drag.pending) {
-      const active = drag, view = active.pending, token = revision;
-      const isCurrent = () => drag === active && revision === token && active.pending === view;
-      try {
-        const [surface, overlays] = await Promise.all([
-          renderFrame(active.product, active.stamp, view, width, height, ratio, token),
-          renderOverlaySurface(view, width, height, isCurrent),
-        ]);
-        if (!surface || !overlays || !isCurrent()) continue;
-        satellite.getContext('2d', { alpha: false }).drawImage(surface, 0, 0);
-        drawOverlays(overlays.surface); overlayCanvas.style.visibility = '';
-        active.rendered = view;
-      } catch {
-        // Keep the last complete view if a tile fails; release retries normally.
-        if (isCurrent()) active.rendered = view;
-      }
-    }
-  } finally { dragRendering = false; }
+    const wanted = requestedDragView(active);
+    const frame = await renderFrame(active.product, active.stamp, wanted, width, height, token, 1);
+    if (!frame || !isCurrent()) return;
+    imageryAtlas = makeAtlas([frame], 512, imageryAtlas); drawDrag(active);
+  } catch { /* The existing complete atlas remains usable offline. */ }
+  finally { active.loading = false; }
 }
 map.addEventListener('pointerdown', event => {
-  if (event.button !== 0 || event.target.closest('button, a, input, select') || !displayed) return;
+  if (event.button !== 0 || event.target.closest('button, a, input, select') || !displayed || displayed.view !== viewKey() || !imageryAtlas) return;
   map.focus({ preventScroll: true }); map.setPointerCapture(event.pointerId);
-  const view = { ...state };
-  drag = { id: event.pointerId, x: event.clientX, y: event.clientY, view, pending: view, rendered: view,
+  const view = { ...state }, token = revision;
+  const active = drag = { id: event.pointerId, x: event.clientX, y: event.clientY, pointerX: event.clientX, pointerY: event.clientY, view, pending: view,
     product: displayed.product, stamp: displayed.stamp, center: project(view.lon, view.lat, 512 * 2 ** view.zoom) };
+  // Fetch spare imagery and overlays independently. Pointer moves below draw
+  // cached atlases synchronously, including when an overlay request is slow.
+  void extendDrag(active);
+  const isCurrent = () => drag === active && revision === token;
+  void loadOverlayAtlas(view, width, height, isCurrent, 2).then(result => {
+    if (result && isCurrent()) { overlayAtlas = result.atlas; drawDrag(active); }
+  }).catch(() => {});
 });
 map.addEventListener('pointermove', event => {
   if (state.coordinates) {
@@ -480,14 +509,16 @@ map.addEventListener('pointermove', event => {
     $('mousePosition').hidden = false;
   }
   if (!drag || drag.id !== event.pointerId) return;
-  const view = dragView(event);
-  if (Math.abs(view.lon - drag.pending.lon) + Math.abs(view.lat - drag.pending.lat) < 1e-9) return;
-  drag.pending = view; void previewDrag();
+  drag.pointerX = event.clientX; drag.pointerY = event.clientY;
+  drawDrag(drag);
+  const wanted = requestedDragView(drag);
+  if (Math.abs(wanted.lon - drag.pending.lon) + Math.abs(wanted.lat - drag.pending.lat) > 1e-8) void extendDrag(drag);
 });
 map.addEventListener('pointerleave', () => { $('mousePosition').hidden = true; });
 function endDrag(event) {
   if (!drag || drag.id !== event.pointerId) return;
-  const view = event.type === 'pointercancel' ? drag.pending : dragView(event);
+  if (event.type !== 'pointercancel') { drag.pointerX = event.clientX; drag.pointerY = event.clientY; drawDrag(drag); }
+  const view = drag.pending;
   drag = null;
   if (Math.abs(view.lon - state.lon) + Math.abs(view.lat - state.lat) < 1e-9) { void renderOverlays(); return; }
   Object.assign(state, view); $('region').value = 'custom'; changeView();

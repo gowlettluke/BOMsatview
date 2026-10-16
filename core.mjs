@@ -50,6 +50,26 @@ export function fitBounds(bounds, width, height) {
   const [lon, lat] = unproject((west + east) / 2, (north + south) / 2);
   return { lon, lat, zoom: clamp(Math.log2(world / 512), 0, 6) };
 }
+export function minimumZoom(width, height) {
+  const [west, north] = project(COVERAGE.west, COVERAGE.north);
+  const [east, south] = project(COVERAGE.east, COVERAGE.south);
+  // Cover the viewport in both dimensions. A tiny inset avoids floating-point
+  // rounding exposing a one-pixel strip at the coverage edge.
+  const world = Math.max(Math.max(1, width) / (east - west), Math.max(1, height) / (south - north));
+  return Math.max(0, Math.log2(world / 512) + 1e-10);
+}
+export function constrainView(view, width, height) {
+  const min = minimumZoom(width, height);
+  const zoom = clamp(view.zoom, min, Math.max(6, min));
+  const world = 512 * 2 ** zoom;
+  const [west, north] = project(COVERAGE.west, COVERAGE.north, world);
+  const [east, south] = project(COVERAGE.east, COVERAGE.south, world);
+  const [cx, cy] = project(view.lon, view.lat, world);
+  const x = clamp(cx, west + width / 2, east - width / 2);
+  const y = clamp(cy, north + height / 2, south - height / 2);
+  const [lon, lat] = unproject(x, y, world);
+  return { lon, lat, zoom };
+}
 export function tilesForView(view, width, height, overlay = false) {
   // Match Satview's OpenLayers grid: choose the nearest *resolution*, rather
   // than flooring zoom. Static overlays use 256px tiles; imagery uses 512px.

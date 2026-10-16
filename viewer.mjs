@@ -1,4 +1,4 @@
-import { PRODUCTS, PRESETS, COVERAGE, project, unproject, timestampMs, selectTimes, tileURL, overlayURL, timelineURL, fitBounds, tilesForView, normalizeSettings, FrameBuffer } from './core.mjs';
+import { PRODUCTS, PRESETS, COVERAGE, project, unproject, timestampMs, selectTimes, tileURL, overlayURL, timelineURL, fitBounds, minimumZoom, constrainView, tilesForView, normalizeSettings, FrameBuffer } from './core.mjs';
 
 const $ = id => document.getElementById(id);
 const STORAGE_KEY = 'bom-satellite-wall-v1';
@@ -260,6 +260,13 @@ async function refreshTimeline() {
   }
 }
 function changeView() {
+  // Applies to buttons, wheel, keyboard, dragging, restored links and resize.
+  // A valid centre alone is insufficient: the entire viewport must stay inside
+  // the image coverage, otherwise zooming out exposes black bands.
+  Object.assign(state, constrainView(state, width, height));
+  const min = minimumZoom(width, height);
+  $('zoom-out').disabled = state.zoom <= min + 1e-8;
+  $('zoom-in').disabled = state.zoom >= Math.max(6, min) - 1e-8;
   revision++;
   // Retain the visible surface while replacing only this view's frame buffer.
   buffer.reset(state.product, viewKey());
@@ -291,10 +298,12 @@ function step(direction) {
 }
 function setWall() { state.wall = false; syncControls(); persist(); }
 function zoom(delta, point = [width / 2, height / 2]) {
+  const nextZoom = Math.max(minimumZoom(width, height), Math.min(6, state.zoom + delta));
+  if (Math.abs(nextZoom - state.zoom) < 1e-9) return;
   const oldWorld = 512 * 2 ** state.zoom;
   const center = project(state.lon, state.lat, oldWorld);
   const anchor = [(center[0] + point[0] - width / 2) / oldWorld, (center[1] + point[1] - height / 2) / oldWorld];
-  state.zoom = Math.max(0, Math.min(6, state.zoom + delta));
+  state.zoom = nextZoom;
   const newWorld = 512 * 2 ** state.zoom;
   const [lon, lat] = unproject(anchor[0] * newWorld - point[0] + width / 2, anchor[1] * newWorld - point[1] + height / 2, newWorld);
   state.lon = Math.max(85, Math.min(180, lon)); state.lat = Math.max(-55, Math.min(20, lat));

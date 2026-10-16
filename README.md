@@ -24,6 +24,8 @@ Open the live URL on the wall-display computer, select the product and overlays,
 
 Settings and playback state are saved locally when browser storage is permitted. The address also includes settings, so it can be bookmarked. **More → Copy display link** copies that address. Existing links from the first version remain supported. Times use **AEST (UTC+10 / Brisbane)**.
 
+Zoom-out is limited by the satellite coverage and the current window dimensions. The full viewport stays inside that coverage, with map-centre limits preventing panning past its edges. The same constraints apply to mouse/keyboard controls, restored links and window/fullscreen resizing, so an older overly zoomed-out bookmark cannot reintroduce black bands outside the imagery.
+
 New displays start with Day + Night, a full satellite-coverage view and playback enabled. Prior saved choices are retained. Stepping or scrubbing intentionally pauses playback; background checks continue. Space toggles playback, plus/minus zoom and arrow keys pan when the map has focus.
 
 ## Background updates

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PRODUCTS, project, unproject, timestampMs, selectTimes, tileURL, timelineURL, tilesForView, fitBounds, PRESETS, normalizeSettings, FrameBuffer } from '../core.mjs';
+import { PRODUCTS, COVERAGE, project, unproject, timestampMs, selectTimes, tileURL, timelineURL, tilesForView, fitBounds, minimumZoom, constrainView, PRESETS, normalizeSettings, FrameBuffer } from '../core.mjs';
 
 test('BoM tiles use TMS Y coordinates; timeline and image products match', () => {
   assert.match(tileURL('zehr', '202610162200', 4, 14, 9), /IDE00433\/Himawari\/202610162200\/4\/14\/6.jpg$/);
@@ -86,6 +86,36 @@ test('Tile zoom follows the original OpenLayers nearest-resolution rule', () => 
     const view = { lon: 145, lat: -22, zoom };
     assert.equal(tilesForView(view, 1000, 700, true)[0].z, expectedZoom(zoom + 1));
     assert.equal(tilesForView(view, 1000, 700)[0].z, Math.min(6, expectedZoom(zoom)));
+  }
+});
+function assertInsideCoverage(view, width, height) {
+  const world = 512 * 2 ** view.zoom;
+  const [cx, cy] = project(view.lon, view.lat, world);
+  const [west, north] = project(COVERAGE.west, COVERAGE.north, world);
+  const [east, south] = project(COVERAGE.east, COVERAGE.south, world);
+  assert.ok(cx - width / 2 >= west - 1e-7, 'left edge remains covered');
+  assert.ok(cx + width / 2 <= east + 1e-7, 'right edge remains covered');
+  assert.ok(cy - height / 2 >= north - 1e-7, 'top edge remains covered');
+  assert.ok(cy + height / 2 <= south + 1e-7, 'bottom edge remains covered');
+}
+test('Minimum zoom fills landscape, portrait, ultrawide and 4K viewports', () => {
+  for (const [width, height] of [[1920, 1080], [1080, 1920], [3440, 1440], [3840, 2160], [320, 568], [16000, 1200]]) {
+    const view = constrainView({ lon: 145, lat: -22, zoom: 0 }, width, height);
+    assert.ok(Math.abs(view.zoom - minimumZoom(width, height)) < 1e-9);
+    assertInsideCoverage(view, width, height);
+    assertInsideCoverage(constrainView(view, height, width), height, width);
+  }
+});
+test('Panning and restored out-of-range bookmarks cannot expose coverage edges', () => {
+  for (const lon of [-200, 85, 145, 180, 400]) for (const lat of [-80, -55, -22, 20, 80]) {
+    for (const zoom of [0, 3.690915, 5, 7]) {
+      const result = constrainView({ lon, lat, zoom }, 1719, 1263);
+      assertInsideCoverage(result, 1719, 1263);
+      const again = constrainView(result, 1719, 1263);
+      assert.ok(Math.abs(again.lon - result.lon) < 1e-9);
+      assert.ok(Math.abs(again.lat - result.lat) < 1e-9);
+      assert.equal(again.zoom, result.zoom);
+    }
   }
 });
 test('Saved settings and URL input are validated, including explicit false values', () => {

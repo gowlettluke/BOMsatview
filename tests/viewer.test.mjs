@@ -1,12 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { minimumZoom, project, COVERAGE } from '../core.mjs';
 
 // Exercise the real viewer's async orchestration without a network or browser.
 // Canvas draws and image loads are observable; failed loads can be injected.
 test('Running viewer keeps playing through new frames, failures, and layer changes without reloading', async () => {
   const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
   const listeners = new Map(), intervals = [], images = [], canvasWrites = [];
+  let viewport = { width: 1200, height: 700 }, resizeObserverCallback;
   class Element {
     constructor(id = '') { this.id = id; this.style = {}; this.dataset = {}; this.value = ''; this.hidden = false; this.checked = false; this.textContent = ''; this.attributes = {}; this.events = new Map(); this.classList = { toggle() {} }; this.parentElement = { hidden: false }; }
     addEventListener(type, fn) { this.events.set(type, fn); }
@@ -15,7 +17,7 @@ test('Running viewer keeps playing through new frames, failures, and layer chang
     querySelector() { return this.icon ||= new Element(); }
     closest() { return null; }
     replaceChildren(...children) { this.children = children; }
-    getBoundingClientRect() { return { width: 1200, height: 700, left: 0, top: 0 }; }
+    getBoundingClientRect() { return { ...viewport, left: 0, top: 0 }; }
     getContext() { return { fillRect() {}, drawImage: (...args) => { if (this.id === 'satellite') canvasWrites.push(args[0]); } }; }
     matches() { return false; }
     focus() {}
@@ -43,7 +45,7 @@ test('Running viewer keeps playing through new frames, failures, and layer chang
   install('history', { replaceState: (_a, _b, value) => { location.hash = value; } });
   install('localStorage', { getItem: () => '{"product":"zehr","speed":2}', setItem() {} });
   install('navigator', { onLine: true });
-  install('ResizeObserver', class { observe() {} });
+  install('ResizeObserver', class { constructor(callback) { resizeObserverCallback = callback; } observe() {} });
   install('Image', class {
     set src(value) {
       if (!value) return;
@@ -134,6 +136,25 @@ test('Running viewer keeps playing through new frames, failures, and layer chang
     elements.get('close-notes').click(); assert.equal(elements.get('notes-modal').getAttribute('aria-hidden'), 'true');
     elements.get('faster').click(); assert.equal(elements.get('speed').value, 4);
     elements.get('slower').click(); assert.equal(elements.get('speed').value, 2);
+
+    // Repeated zoom-out clicks stop at a viewport-dependent limit, rather
+    // than allowing the black space outside the satellite coverage to appear.
+    for (let i = 0; i < 30; i++) elements.get('zoom-out').click();
+    let settings = new URLSearchParams(location.hash.slice(1));
+    assert.ok(Math.abs(Number(settings.get('zoom')) - minimumZoom(1200, 700)) < 1e-6);
+    assert.equal(elements.get('zoom-out').disabled, true);
+    const limitedURL = location.hash;
+    elements.get('zoom-out').click(); assert.equal(location.hash, limitedURL);
+    viewport = { width: 700, height: 1200 }; resizeObserverCallback();
+    await settle(() => Number(new URLSearchParams(location.hash.slice(1)).get('zoom')) >= minimumZoom(700, 1200) - 1e-6);
+    settings = new URLSearchParams(location.hash.slice(1));
+    const world = 512 * 2 ** Number(settings.get('zoom'));
+    const [cx, cy] = project(Number(settings.get('lon')), Number(settings.get('lat')), world);
+    const [west, north] = project(COVERAGE.west, COVERAGE.north, world);
+    const [east, south] = project(COVERAGE.east, COVERAGE.south, world);
+    // Settings serialize to six decimals; allow that sub-pixel precision loss.
+    assert.ok(cx - 350 >= west - 0.01 && cx + 350 <= east + 0.01);
+    assert.ok(cy - 600 >= north - 0.01 && cy + 600 <= south + 0.01);
   } finally {
     globalThis.setInterval = realSetInterval; Date.now = realDateNow;
     // Let the debounced overlay work settle before restoring browser globals.

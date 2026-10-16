@@ -1,0 +1,13 @@
+{
+  "name": "bom-satellite-wall",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "An automatically updating browser-only BoM satellite wall display",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "check": "node --check viewer.mjs && node --check core.mjs",
+    "build": "node scripts/build.mjs"
+  },
+  "engines": { "node": ">=20" }
+}

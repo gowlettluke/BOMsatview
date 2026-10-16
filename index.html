@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="An automatically updating satellite wall display for BoM Infrared + Zehr and Lightning imagery.">
+  <meta name="referrer" content="no-referrer">
+  <title>Satellite / Wall Display</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%230b151d'/%3E%3Ccircle cx='20' cy='20' r='11' fill='none' stroke='%2368e2bf' stroke-width='3'/%3E%3Cpath d='M8 28L30 10' stroke='%2368e2bf' stroke-width='3'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header class="topbar chrome">
+    <a class="brand" href="./" aria-label="Satellite wall display home"><span class="brand-mark">◉</span><span>SATELLITE<small>WALL DISPLAY</small></span></a>
+    <div class="selectors">
+      <label>Imagery<select id="product"><option value="zehr">Infrared + Zehr</option><option value="lightning">Lightning + Infrared</option></select></label>
+      <label>View<select id="region"><option value="custom">Custom view</option><option value="queensland">Queensland</option><option value="southeast">South-east Queensland</option><option value="australia">Australia</option></select></label>
+    </div>
+    <div class="top-actions">
+      <button id="share" title="Copy a link with these display settings">Copy link</button>
+      <button id="wall" title="Hide controls for the wall display (W)">Wall mode</button>
+      <button id="fullscreen" title="Enter fullscreen (F)">⛶ <span class="desktop">Fullscreen</span></button>
+    </div>
+  </header>
+
+  <main id="map" tabindex="0" aria-label="Satellite map. Drag to pan, scroll or use plus and minus to zoom. Arrow keys move the map.">
+    <canvas id="satellite" aria-label="Animated satellite imagery"></canvas>
+    <canvas id="overlays" aria-hidden="true"></canvas>
+    <div class="map-caption">
+      <div id="display-product" class="eyebrow">INFRARED + ZEHR</div>
+      <div id="frame-time" class="frame-time">Loading imagery…</div>
+      <div id="frame-date" class="muted">Times displayed in AEST · UTC+10</div>
+    </div>
+    <div class="live-panel"><span id="live-status" class="status-dot">CONNECTING</span><time id="clock"></time><small id="freshness">Checking available images</small></div>
+    <div class="map-tools chrome"><button id="zoom-in" aria-label="Zoom in">+</button><button id="zoom-out" aria-label="Zoom out">−</button></div>
+    <div id="initial" role="status"><div class="orbit"></div><h1>Connecting to the satellite feed</h1><p id="initial-message">Loading the latest available image.</p><button id="retry">Try again</button></div>
+    <div class="map-bottom">
+      <div id="legend" aria-label="Image legend"></div>
+      <div class="credits">Imagery: JMA / Bureau of Meteorology<span id="lightning-credit" hidden> · Lightning: Weatherzone</span><br><a href="http://satview.bom.gov.au/about.html" target="_blank" rel="noreferrer">About the source</a> · Independent viewer</div>
+    </div>
+    <div id="toast" role="status" hidden></div>
+    <button id="exit-wall" class="wall-exit">Show controls · W</button>
+  </main>
+
+  <footer class="controls chrome">
+    <div class="playback">
+      <button id="previous" title="Previous frame" aria-label="Previous frame">‹</button>
+      <button id="play" class="play" aria-label="Pause animation" title="Play or pause (Space)">Ⅱ</button>
+      <button id="next" title="Next frame" aria-label="Next frame">›</button>
+      <div class="timeline"><input id="timeline" type="range" min="0" max="0" value="0" aria-label="Image time"><div class="timeline-labels"><span id="range-start">—</span><span id="frame-count">Loading</span><span id="range-end">—</span></div></div>
+      <button id="latest" title="Pause on the newest loaded image">Latest</button>
+    </div>
+    <div class="preferences">
+      <div class="preference-group">
+        <label>Loop<select id="hours"><option value="1">1 hour</option><option value="2">2 hours</option><option value="4">4 hours</option></select></label>
+        <label>Speed<select id="speed"><option value="1">1 fps</option><option value="2">2 fps</option><option value="4">4 fps</option><option value="8">8 fps</option></select></label>
+        <label class="check"><input id="boundaries" type="checkbox"> States</label>
+        <label class="check"><input id="cities" type="checkbox"> Cities</label>
+        <label class="check"><input id="coast" type="checkbox"> Coast</label>
+      </div>
+      <div class="connection"><span id="connection">Starting…</span><span id="checked">Background updates every minute</span></div>
+    </div>
+  </footer>
+  <noscript><div class="noscript">JavaScript is required to animate and update this display.</div></noscript>
+  <script type="module" src="./viewer.mjs"></script>
+</body>
+</html>
